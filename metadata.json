@@ -1,0 +1,6 @@
+{
+  "name": "LabPulse India - Diagnostic Reporting & WhatsApp Delivery",
+  "description": "Professional pathology and diagnostic lab reporting tool for Indian lab owners with test templates, auto abnormal flagging, bilingual patient interpretations, and instant WhatsApp report dispatch.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
