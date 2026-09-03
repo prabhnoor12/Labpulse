@@ -1,4 +1,4 @@
-import { Gender, ParameterFlag, TestParameter } from '../types';
+import { Gender, ParameterFlag, TestParameter } from '@/domain/types';
 
 export function evaluateParameterFlag(
   value: string | number,

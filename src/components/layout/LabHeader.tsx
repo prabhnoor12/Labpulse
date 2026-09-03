@@ -10,7 +10,7 @@ import {
   ShieldCheck,
   FileText
 } from 'lucide-react';
-import { LabProfile } from '../types';
+import { LabProfile } from '@/domain/types';
 
 interface LabHeaderProps {
   lab: LabProfile;

@@ -11,7 +11,7 @@ import {
   Layers,
   FileCheck
 } from 'lucide-react';
-import { DiagnosticReport, LabProfile } from '../types';
+import { DiagnosticReport, LabProfile } from '@/domain/types';
 import { DiagnosticReportDocument } from './DiagnosticReportDocument';
 
 interface ReportViewerModalProps {

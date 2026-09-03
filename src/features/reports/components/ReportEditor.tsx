@@ -23,9 +23,8 @@ import {
   Languages,
   CheckCircle2
 } from 'lucide-react';
-import { DiagnosticReport, LabProfile, TestPanel, TestParameter, TestTemplate } from '../types';
-import { standardTestTemplates } from '../data/defaultTemplates';
-import { computeDerivedValues, evaluateParameterFlag } from '../utils/rangeEvaluator';
+import { DiagnosticReport, LabProfile, TestPanel, TestParameter, TestTemplate } from '@/domain/types';
+import { computeDerivedValues, evaluateParameterFlag } from '@/domain/rangeEvaluator';
 
 interface ReportEditorProps {
   report: DiagnosticReport;
@@ -376,7 +375,7 @@ export const ReportEditor: React.FC<ReportEditorProps> = ({
               required
               value={patient.name}
               onChange={(e) => handlePatientChange('name', e.target.value)}
-              placeholder="e.g. Ramesh Kumar Verma"
+              placeholder="Enter patient name"
               className="w-full px-3 py-2 border border-slate-300 rounded-lg font-bold text-slate-900 focus:ring-2 focus:ring-teal-600 focus:outline-none"
             />
           </div>
@@ -441,7 +440,7 @@ export const ReportEditor: React.FC<ReportEditorProps> = ({
                 type="tel"
                 value={patient.phone}
                 onChange={(e) => handlePatientChange('phone', e.target.value)}
-                placeholder="9810123456"
+                placeholder="Enter mobile number"
                 className="w-full px-2.5 py-2 border border-slate-300 rounded-r-lg font-bold text-emerald-950 font-mono focus:ring-2 focus:ring-emerald-600 focus:outline-none"
               />
             </div>
@@ -457,7 +456,7 @@ export const ReportEditor: React.FC<ReportEditorProps> = ({
               type="text"
               value={patient.referringDoctor}
               onChange={(e) => handlePatientChange('referringDoctor', e.target.value)}
-              placeholder="e.g. Dr. S.K. Grover, MD or Self"
+              placeholder="Enter referring doctor or hospital"
               className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-800"
             />
           </div>

@@ -9,7 +9,7 @@ import {
   Trash2, 
   Check 
 } from 'lucide-react';
-import { LabProfile, DoctorSignatory } from '../types';
+import { LabProfile, DoctorSignatory } from '@/domain/types';
 
 interface LabSettingsModalProps {
   isOpen: boolean;
@@ -281,7 +281,7 @@ export const LabSettingsModal: React.FC<LabSettingsModalProps> = ({
                 <input
                   id="lab-upi-input"
                   type="text"
-                  placeholder="e.g. apexpathlab@okhdfcbank"
+                  placeholder="Enter UPI ID"
                   value={formData.upiId || ''}
                   onChange={(e) => setFormData({ ...formData, upiId: e.target.value })}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono text-teal-800 font-semibold"

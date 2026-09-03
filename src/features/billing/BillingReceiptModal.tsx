@@ -11,7 +11,7 @@ import {
   FileSpreadsheet,
   Share2
 } from 'lucide-react';
-import { BillingInfo, DiagnosticReport, LabProfile } from '../types';
+import { BillingInfo, DiagnosticReport, LabProfile } from '@/domain/types';
 
 interface BillingReceiptModalProps {
   isOpen: boolean;
@@ -49,7 +49,7 @@ export const BillingReceiptModal: React.FC<BillingReceiptModalProps> = ({
   };
 
   // UPI Dynamic Link generator: upi://pay?pa=<vpa>&pn=<name>&am=<amount>&cu=INR&tn=<note>
-  const upiVpa = lab.upiId || 'apexdiagnostics@okhdfcbank';
+  const upiVpa = lab.upiId || '';
   const upiQrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(
     `upi://pay?pa=${upiVpa}&pn=${encodeURIComponent(lab.name)}&am=${billing.netAmount}&cu=INR&tn=Diagnostic-Bill-${report.patient.uhid}`
   )}`;

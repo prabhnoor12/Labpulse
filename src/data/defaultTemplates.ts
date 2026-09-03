@@ -1,4 +1,4 @@
-import { TestTemplate } from '../types';
+import { TestTemplate } from '@/domain/types';
 
 export const standardTestTemplates: TestTemplate[] = [
   {

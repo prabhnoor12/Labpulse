@@ -16,7 +16,7 @@ import {
   Calendar,
   AlertCircle
 } from 'lucide-react';
-import { DiagnosticReport, LabProfile } from '../types';
+import { DiagnosticReport, LabProfile } from '@/domain/types';
 
 interface PatientRegistryProps {
   reports: DiagnosticReport[];

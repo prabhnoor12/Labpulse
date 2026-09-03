@@ -1,4 +1,4 @@
-import { DiagnosticReport, LabProfile } from '../types';
+import { DiagnosticReport, LabProfile } from '@/domain/types';
 
 export function sanitizeIndianPhone(phone: string): string {
   // Extract only digits

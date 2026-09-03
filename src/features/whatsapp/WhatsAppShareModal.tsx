@@ -13,8 +13,8 @@ import {
   Share2,
   PhoneCall
 } from 'lucide-react';
-import { DiagnosticReport, LabProfile } from '../types';
-import { generateWhatsAppMessage, openWhatsAppChat } from '../utils/whatsappHelper';
+import { DiagnosticReport, LabProfile } from '@/domain/types';
+import { generateWhatsAppMessage, openWhatsAppChat } from '@/features/whatsapp/whatsappService';
 
 interface WhatsAppShareModalProps {
   isOpen: boolean;
@@ -140,7 +140,7 @@ export const WhatsAppShareModal: React.FC<WhatsAppShareModalProps> = ({
                     type="tel"
                     value={recipientPhone}
                     onChange={(e) => setRecipientPhone(e.target.value)}
-                    placeholder="9810123456"
+                    placeholder="Enter mobile number"
                     className="w-full px-2.5 py-1.5 border border-slate-300 rounded-r-lg font-mono font-bold text-emerald-950 focus:ring-2 focus:ring-emerald-600 focus:outline-none"
                   />
                 </div>

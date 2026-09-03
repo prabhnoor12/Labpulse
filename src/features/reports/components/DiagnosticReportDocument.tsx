@@ -12,8 +12,8 @@ import {
   User,
   Activity
 } from 'lucide-react';
-import { DiagnosticReport, LabProfile } from '../types';
-import { generateQrDataUrl } from '../utils/qrGenerator';
+import { DiagnosticReport, LabProfile } from '@/domain/types';
+import { generateQrDataUrl } from '@/services/qrService';
 
 interface DiagnosticReportDocumentProps {
   report: DiagnosticReport;
@@ -85,7 +85,7 @@ export const DiagnosticReportDocument: React.FC<DiagnosticReportDocumentProps> =
             <div className="text-right hidden sm:block">
               <div className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-50 border border-emerald-300 rounded text-[10px] font-bold text-emerald-800 uppercase tracking-wide">
                 <ShieldCheck className="w-3 h-3 text-emerald-600" />
-                {lab.accreditations[0] || 'NABL ACCREDITED'}
+                {lab.accreditations[0] || 'Accreditation not configured'}
               </div>
               <div className="text-[10px] text-slate-500 mt-0.5">
                 Reg: {lab.regNumber}
@@ -329,7 +329,7 @@ export const DiagnosticReportDocument: React.FC<DiagnosticReportDocumentProps> =
             <div className="w-16 h-16 rounded-full border-2 border-dashed border-teal-600 flex flex-col items-center justify-center p-1 transform rotate-[-8deg] bg-teal-50/30">
               <ShieldCheck className="w-5 h-5 text-teal-700" />
               <span className="text-[7px] font-extrabold text-teal-800 uppercase tracking-tighter text-center leading-tight">
-                APEX NABL EQAS<br/>VERIFIED
+                {lab.name || 'LABORATORY'}<br/>VERIFIED
               </span>
             </div>
           </div>
@@ -338,13 +338,13 @@ export const DiagnosticReportDocument: React.FC<DiagnosticReportDocumentProps> =
           <div className="text-center sm:text-right">
             <div className="h-10 flex items-center justify-center sm:justify-end">
               <span className="font-serif italic text-teal-900 font-bold text-sm tracking-wide">
-                {signatory.signatureText || signatory.name}
+                {signatory?.signatureText || signatory?.name || 'Authorized signatory'}
               </span>
             </div>
             <div className="border-t border-slate-400 pt-1">
-              <div className="font-bold text-slate-900 text-[11px]">{signatory.name}</div>
-              <div className="text-[10px] text-teal-800 font-medium">{signatory.degrees}</div>
-              <div className="text-[9px] text-slate-500">Reg: {signatory.regNumber}</div>
+              <div className="font-bold text-slate-900 text-[11px]">{signatory?.name || 'Not configured'}</div>
+              <div className="text-[10px] text-teal-800 font-medium">{signatory?.degrees}</div>
+              <div className="text-[9px] text-slate-500">Reg: {signatory?.regNumber}</div>
             </div>
           </div>
         </div>

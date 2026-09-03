@@ -13,7 +13,7 @@ import {
   ChevronRight,
   ArrowLeft
 } from 'lucide-react';
-import { TestTemplate } from '../types';
+import { TestTemplate } from '@/domain/types';
 
 interface TestCatalogModalProps {
   isOpen: boolean;

@@ -9,7 +9,7 @@ import {
   CheckCircle2, 
   AlertCircle 
 } from 'lucide-react';
-import { standardTestTemplates } from '../data/defaultTemplates';
+import { standardTestTemplates } from '@/data/defaultTemplates';
 
 interface PrescriptionScannerModalProps {
   isOpen: boolean;
@@ -36,46 +36,6 @@ export const PrescriptionScannerModal: React.FC<PrescriptionScannerModalProps> =
   const [result, setResult] = useState<any | null>(null);
 
   if (!isOpen) return null;
-
-  const samplePresets = [
-    {
-      label: 'Diabetic & Lipid Workup (Dr. Gupta)',
-      text: `Rx
-Patient: Ramesh Kumar Verma, 48M
-Ref by: Dr. S.K. Grover, MD (Med)
-Chief Complaints: Polyuria, Polydipsia, Fatigue
-Advised Lab Tests:
-1. Fasting Blood Sugar (FBS) & PPBS (2hr post meal)
-2. Glycated Hemoglobin (HbA1c)
-3. Lipid Profile Comprehensive (Fasting)
-4. Kidney Function Test (KFT) with Creatinine & Electrolytes
-Strict 10-12 hrs overnight fasting advised.`,
-    },
-    {
-      label: 'Acute Febrile Illness (Fever Panel)',
-      text: `Rx
-Patient: Aarav Gupta, 26 Yrs / Male
-Referred by: Dr. Vivek Saxena
-Complaints: High grade fever since 4 days, body ache, retro-orbital pain
-Advised Investigations:
-- CBC with Platelet Count and ESR
-- Dengue NS1 Antigen Card Test
-- Widal Test for Typhoid
-- Malaria Rapid Antigen (Pv/Pf)
-- CRP Quantitative
-Urgent reporting requested.`,
-    },
-    {
-      label: 'Fatigue & Anemia Screening',
-      text: `Requisition:
-Patient Name: Sunita Sharma, Female 32 Yrs
-Advised Tests:
-- Complete Blood Count (CBC) with Peripheral Smear
-- Vitamin D (25-OH Total)
-- Vitamin B12
-- Thyroid Profile (TSH, T3, T4)`,
-    },
-  ];
 
   const handleParse = async () => {
     if (!rxText.trim()) return;
@@ -142,28 +102,6 @@ Advised Tests:
 
         {/* Content */}
         <div className="p-4 sm:p-6 space-y-4 overflow-y-auto flex-1 text-xs">
-          {/* Preset Buttons */}
-          <div>
-            <label className="block text-[10px] font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-              Quick Sample Prescriptions (Indian Clinics)
-            </label>
-            <div className="flex flex-wrap gap-1.5 sm:gap-2">
-              {samplePresets.map((preset, idx) => (
-                <button
-                  key={idx}
-                  type="button"
-                  onClick={() => {
-                    setRxText(preset.text);
-                    setResult(null);
-                  }}
-                  className="text-[11px] font-medium bg-slate-100 hover:bg-teal-50 hover:text-teal-800 hover:border-teal-300 border border-slate-200 px-2.5 py-1.5 rounded-lg transition-colors"
-                >
-                  {preset.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
           {/* Textarea */}
           <div>
             <label className="block text-[10px] font-bold text-slate-700 uppercase tracking-wider mb-1.5">
@@ -174,7 +112,7 @@ Advised Tests:
               rows={5}
               value={rxText}
               onChange={(e) => setRxText(e.target.value)}
-              placeholder="e.g. Rx: Patient Sunita Sharma 32F. Advised CBC, LFT, Lipid, HbA1c, TSH. Fasting sample needed. Dr. Grover"
+              placeholder="Paste the prescription or requisition notes here"
               className="w-full p-2.5 sm:p-3 border border-slate-300 rounded-lg text-xs font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-600 focus:border-transparent leading-relaxed"
             />
           </div>
