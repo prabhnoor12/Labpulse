@@ -1,4 +1,5 @@
 import { DiagnosticReport, LabProfile } from '@/domain/types';
+import { isClinicallyAbnormalFlag } from '@/domain/rangeEvaluator';
 
 export function sanitizeIndianPhone(phone: string): string {
   // Extract only digits
@@ -14,6 +15,10 @@ export function sanitizeIndianPhone(phone: string): string {
   return digits;
 }
 
+export function isValidIndianPhone(phone: string): boolean {
+  return /^91[6-9]\d{9}$/.test(sanitizeIndianPhone(phone));
+}
+
 export interface WhatsAppFormatOptions {
   templateType?: 'standard' | 'detailed' | 'urgent' | 'hindi';
   includeInterpretation?: boolean;
@@ -21,10 +26,17 @@ export interface WhatsAppFormatOptions {
 }
 
 export function generateWhatsAppMessage(
-  report: DiagnosticReport,
+  sourceReport: DiagnosticReport,
   lab: LabProfile,
   options?: WhatsAppFormatOptions
 ): string {
+  // Treat reports awaiting sign-off as unverified in every template.
+  // A normalized copy keeps the caller's report immutable while preventing
+  // Hindi and detailed templates from implying verification prematurely.
+  const report: DiagnosticReport = {
+    ...sourceReport,
+    status: sourceReport.status === 'READY_FOR_REVIEW' ? 'DRAFT' : sourceReport.status,
+  };
   const templateType = options?.templateType || 'standard';
   const includeInterpretation = options?.includeInterpretation ?? true;
   const includeUPIReceipt = options?.includeUPIReceipt ?? true;
@@ -36,7 +48,7 @@ export function generateWhatsAppMessage(
   const abnormalList: string[] = [];
   report.tests.forEach((t) => {
     t.parameters.forEach((p) => {
-      if (p.flag && p.flag !== 'NORMAL') {
+      if (isClinicallyAbnormalFlag(p.flag)) {
         const arrow = p.flag === 'HIGH' || p.flag === 'CRITICAL_HIGH' ? '🔺 HIGH' : '🔻 LOW';
         abnormalList.push(`• *${p.name}*: ${p.value} ${p.unit} (${arrow})`);
       }
@@ -44,14 +56,21 @@ export function generateWhatsAppMessage(
   });
 
   const appUrl = typeof window !== 'undefined' ? window.location.origin : 'https://labpulse.in';
-  const reportLink = `${appUrl}/#report-${report.reportNumber}`;
+  const reportLink = report.publicReportUrl || `${appUrl}/#report-${encodeURIComponent(report.reportNumber)}`;
+  const isVerified = report.status === 'VERIFIED' || report.status === 'DISPATCHED';
+  const isDraft = !isVerified;
+  const verificationText = sourceReport.status === 'READY_FOR_REVIEW'
+    ? 'AWAITING PATHOLOGIST VERIFICATION'
+    : isDraft
+    ? 'DRAFT - NOT VERIFIED'
+    : 'VERIFIED DIGITAL REPORT';
 
   if (templateType === 'hindi') {
     return `🏥 *${lab.name.toUpperCase()}*
 📍 ${lab.city}, ${lab.state} | 📞 WhatsApp: ${lab.whatsapp}
 
 प्रिय *${patient.name}* जी,
-आपकी लैब जाँच रिपोर्ट (Report ID: *${report.reportNumber}*) तैयार और वेरिफाइड है।
+आपकी लैब जाँच रिपोर्ट (Report ID: *${report.reportNumber}*) ${report.status === 'DRAFT' ? 'ड्राफ्ट रूप में तैयार है और अभी वेरिफाइड नहीं है।' : 'तैयार और वेरिफाइड है।'}
 
 📋 *जाँच का विवरण (Tests Conducted):*
 ${testNames}
@@ -117,10 +136,10 @@ Please consult *Dr. ${patient.referringDoctor}* immediately with this report.`;
 ${testNames}
 ${abnormalSection}${impressionSection}${billingSection}
 
-🔗 *VIEW & DOWNLOAD VERIFIED DIGITAL REPORT:*
+🔗 *VIEW & DOWNLOAD ${verificationText}:*
 ${reportLink}
 
-📌 _This is an authorized diagnostic document verified by ${lab.signatories[0]?.name || 'Chief Pathologist'}. Kindly consult your physician for clinical correlation and prescription._
+📌 _${report.status === 'DRAFT' ? 'This is a draft document and must not be used as a final report.' : `This is an authorized diagnostic document verified by ${lab.signatories[0]?.name || 'Chief Pathologist'}. Kindly consult your physician for clinical correlation and prescription.`}_
 
 ━━━━━━━━━━━━━━━━━━━━━━
 📞 Lab WhatsApp / Helpdesk: ${lab.whatsapp}
@@ -131,7 +150,7 @@ ${reportLink}
   return `🏥 *${lab.name}*
 Dear *${patient.name}*,
 
-Your Diagnostic Test Report (*${report.reportNumber}*) is ready and verified.
+Your Diagnostic Test Report (*${report.reportNumber}*) is ${isVerified ? 'ready and verified' : sourceReport.status === 'READY_FOR_REVIEW' ? 'awaiting pathologist verification' : 'prepared as a draft and is not yet verified'}.
 
 🗓 *Date:* ${new Date(patient.reportGeneratedAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
 🧪 *Tests Conducted:* ${testNames}
@@ -139,7 +158,7 @@ ${abnormalList.length > 0 ? `⚠️ *Finding:* ${abnormalList.length} parameter(
 
 ${includeInterpretation && report.patientSummaryEn ? `💡 *Summary:* ${report.patientSummaryEn}\n` : ''}
 ${includeUPIReceipt ? `💳 *Bill Status:* ₹${report.billing.netAmount} (${report.billing.paymentStatus})\n` : ''}
-📥 *View & Download PDF Report:*
+📥 *${verificationText}:*
 ${reportLink}
 
 For inquiries, WhatsApp our Lab Helpdesk at ${lab.whatsapp}.

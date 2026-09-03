@@ -10,19 +10,12 @@ import {
   AlertCircle 
 } from 'lucide-react';
 import { standardTestTemplates } from '@/data/defaultTemplates';
+import { parseDoctorPrescription, PrescriptionParseResult } from '@/services/aiService';
 
 interface PrescriptionScannerModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onApplyParsedData: (data: {
-    selectedTestIds: string[];
-    patientName?: string;
-    patientAge?: number;
-    patientGender?: string;
-    doctorName?: string;
-    fastingRequired?: boolean;
-    specialInstructions?: string;
-  }) => void;
+  onApplyParsedData: (data: PrescriptionParseResult) => void;
 }
 
 export const PrescriptionScannerModal: React.FC<PrescriptionScannerModalProps> = ({
@@ -33,7 +26,7 @@ export const PrescriptionScannerModal: React.FC<PrescriptionScannerModalProps> =
   const [rxText, setRxText] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<any | null>(null);
+  const [result, setResult] = useState<PrescriptionParseResult | null>(null);
 
   if (!isOpen) return null;
 
@@ -43,21 +36,10 @@ export const PrescriptionScannerModal: React.FC<PrescriptionScannerModalProps> =
     setError(null);
 
     try {
-      const res = await fetch('/api/ai/parse-doctor-rx', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rxText }),
-      });
-
-      if (!res.ok) {
-        throw new Error('Failed to parse prescription');
-      }
-
-      const data = await res.json();
-      setResult(data);
-    } catch (err: any) {
+      setResult(await parseDoctorPrescription(rxText));
+    } catch (err: unknown) {
       console.error(err);
-      setError(err.message || 'Error parsing requisition notes');
+      setError(err instanceof Error ? err.message : 'Error parsing requisition notes');
     } finally {
       setLoading(false);
     }
@@ -66,7 +48,7 @@ export const PrescriptionScannerModal: React.FC<PrescriptionScannerModalProps> =
   const handleApply = () => {
     if (!result) return;
     onApplyParsedData({
-      selectedTestIds: result.suggestedTestIds || [],
+      suggestedTestIds: result.suggestedTestIds || [],
       patientName: result.patientName,
       patientAge: result.patientAge,
       patientGender: result.patientGender,

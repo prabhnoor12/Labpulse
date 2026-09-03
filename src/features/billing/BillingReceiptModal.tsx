@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   X, 
   CreditCard, 
@@ -12,6 +12,7 @@ import {
   Share2
 } from 'lucide-react';
 import { BillingInfo, DiagnosticReport, LabProfile } from '@/domain/types';
+import { generateQrDataUrl, generateUpiString } from '@/services/qrService';
 
 interface BillingReceiptModalProps {
   isOpen: boolean;
@@ -29,30 +30,77 @@ export const BillingReceiptModal: React.FC<BillingReceiptModalProps> = ({
   onUpdateBilling,
 }) => {
   const [billing, setBilling] = useState<BillingInfo>({ ...report.billing });
+  const [upiQrUrl, setUpiQrUrl] = useState<string>('');
+
+  useEffect(() => {
+    if (isOpen) setBilling({ ...report.billing });
+  }, [isOpen, report.id, report.billing]);
+
+  useEffect(() => {
+    let active = true;
+    if (!isOpen || !lab.upiId || billing.netAmount <= 0) {
+      setUpiQrUrl('');
+      return () => {
+        active = false;
+      };
+    }
+
+    generateQrDataUrl(
+      generateUpiString(lab.upiId, lab.name, billing.netAmount, `Diagnostic-Bill-${report.patient.uhid}`),
+    ).then((url) => {
+      if (active) setUpiQrUrl(url);
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [billing.netAmount, isOpen, lab.name, lab.upiId, report.patient.uhid]);
 
   if (!isOpen) return null;
 
   const handleDiscountChange = (discountAmount: number) => {
     const total = billing.totalAmount;
-    const net = Math.max(0, total - discountAmount);
+    const discount = Math.min(Math.max(0, discountAmount), total);
+    const net = Math.max(0, total - discount);
     setBilling({
       ...billing,
-      discount: discountAmount,
+      discount,
       netAmount: net,
+      paidAmount: Math.min(billing.paidAmount, net),
+    });
+  };
+
+  const handlePaidAmountChange = (paidAmount: number) => {
+    setBilling({
+      ...billing,
+      paidAmount: Math.min(Math.max(0, paidAmount), billing.netAmount),
     });
   };
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
-    onUpdateBilling(billing);
+    const totalAmount = report.tests.reduce((sum, test) => sum + Math.max(0, Number(test.price) || 0), 0);
+    const discount = Math.min(Math.max(0, Number(billing.discount) || 0), totalAmount);
+    const netAmount = Math.max(0, totalAmount - discount);
+    const paidAmount = Math.min(Math.max(0, Number(billing.paidAmount) || 0), netAmount);
+    const paymentStatus = paidAmount >= netAmount && netAmount > 0
+      ? 'PAID'
+      : paidAmount > 0
+      ? 'PARTIAL'
+      : 'UNPAID';
+
+    onUpdateBilling({
+      ...billing,
+      totalAmount,
+      discount,
+      netAmount,
+      paidAmount,
+      paymentStatus,
+    });
     onClose();
   };
 
-  // UPI Dynamic Link generator: upi://pay?pa=<vpa>&pn=<name>&am=<amount>&cu=INR&tn=<note>
   const upiVpa = lab.upiId || '';
-  const upiQrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(
-    `upi://pay?pa=${upiVpa}&pn=${encodeURIComponent(lab.name)}&am=${billing.netAmount}&cu=INR&tn=Diagnostic-Bill-${report.patient.uhid}`
-  )}`;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/70 backdrop-blur-xs">
@@ -100,7 +148,7 @@ export const BillingReceiptModal: React.FC<BillingReceiptModalProps> = ({
           </div>
 
           {/* Discount & Payment Mode */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">
                 Discount Concession (₹)
@@ -123,12 +171,44 @@ export const BillingReceiptModal: React.FC<BillingReceiptModalProps> = ({
 
             <div>
               <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">
+                Amount Paid (₹)
+              </label>
+              <div className="flex">
+                <span className="bg-slate-100 border border-r-0 border-slate-300 px-2.5 py-1.5 text-slate-600 rounded-l-lg font-bold">
+                  ₹
+                </span>
+                <input
+                  id="billing-paid-input"
+                  type="number"
+                  min={0}
+                  max={billing.netAmount}
+                  step="0.01"
+                  value={billing.paidAmount}
+                  onChange={(e) => handlePaidAmountChange(Number(e.target.value) || 0)}
+                  className="w-full px-2.5 py-1.5 border border-slate-300 rounded-r-lg font-mono font-bold text-slate-900"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">
                 Payment Status
               </label>
               <select
                 id="billing-payment-status-select"
                 value={billing.paymentStatus}
-                onChange={(e) => setBilling({ ...billing, paymentStatus: e.target.value as any })}
+                onChange={(e) => {
+                  const paymentStatus = e.target.value as BillingInfo['paymentStatus'];
+                  setBilling({
+                    ...billing,
+                    paymentStatus,
+                    paidAmount: paymentStatus === 'PAID'
+                      ? billing.netAmount
+                      : paymentStatus === 'UNPAID'
+                      ? 0
+                      : Math.min(billing.paidAmount, billing.netAmount),
+                  });
+                }}
                 className="w-full px-2.5 py-2 border border-slate-300 rounded-lg font-bold text-slate-900"
               >
                 <option value="PAID">PAID (Settled)</option>
@@ -146,7 +226,7 @@ export const BillingReceiptModal: React.FC<BillingReceiptModalProps> = ({
               <select
                 id="billing-payment-mode-select"
                 value={billing.paymentMethod}
-                onChange={(e) => setBilling({ ...billing, paymentMethod: e.target.value as any })}
+                onChange={(e) => setBilling({ ...billing, paymentMethod: e.target.value as BillingInfo['paymentMethod'] })}
                 className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-slate-800"
               >
                 <option value="UPI">UPI (GPay / PhonePe / Paytm)</option>
@@ -187,12 +267,13 @@ export const BillingReceiptModal: React.FC<BillingReceiptModalProps> = ({
 
             {/* UPI QR Code */}
             <div className="flex flex-col items-center bg-white p-2 rounded-lg border border-indigo-100 shadow-xs">
-              <img
-                src={upiQrUrl}
-                alt="UPI QR Code"
-                className="w-24 h-24 sm:w-28 sm:h-28"
-                referrerPolicy="no-referrer"
-              />
+              {upiQrUrl ? (
+                <img src={upiQrUrl} alt="UPI QR Code" className="w-24 h-24 sm:w-28 sm:h-28" />
+              ) : (
+                <div className="w-24 h-24 sm:w-28 sm:h-28 flex items-center justify-center text-center text-[10px] text-slate-500">
+                  Configure a UPI ID to generate a QR code.
+                </div>
+              )}
               <span className="text-[9px] font-bold text-slate-500 mt-1 uppercase">Scan & Pay via UPI</span>
             </div>
           </div>

@@ -1,0 +1,10 @@
+{
+  "name": "LabPulse India",
+  "short_name": "LabPulse",
+  "description": "Diagnostic laboratory reporting workspace",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#0f766e",
+  "lang": "en-IN"
+}

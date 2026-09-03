@@ -34,9 +34,17 @@ export const DiagnosticReportDocument: React.FC<DiagnosticReportDocumentProps> =
   const signatory = lab.signatories.find((s) => s.id === report.selectedSignatoryId) || lab.signatories[0];
 
   useEffect(() => {
-    const verifyUrl = `${window.location.origin}/#verify-${report.reportNumber}`;
-    generateQrDataUrl(verifyUrl).then(setQrCodeUrl);
-  }, [report.reportNumber]);
+    const verifyUrl = report.publicReportUrl;
+    if (!verifyUrl) {
+      setQrCodeUrl('');
+      return;
+    }
+    let active = true;
+    generateQrDataUrl(verifyUrl).then((url) => {
+      if (active) setQrCodeUrl(url);
+    });
+    return () => { active = false; };
+  }, [report.publicReportUrl, report.reportNumber]);
 
   return (
     <div 

@@ -1,6 +1,18 @@
 export type AgeUnit = 'Yrs' | 'Months' | 'Days';
 export type Gender = 'Male' | 'Female' | 'Other';
-export type ParameterFlag = 'NORMAL' | 'LOW' | 'HIGH' | 'CRITICAL_LOW' | 'CRITICAL_HIGH' | 'ABNORMAL' | 'POSITIVE' | 'REACTIVE' | 'NEGATIVE' | 'NON_REACTIVE';
+export type ParameterFlag =
+  | 'NORMAL'
+  | 'PENDING'
+  | 'INVALID'
+  | 'LOW'
+  | 'HIGH'
+  | 'CRITICAL_LOW'
+  | 'CRITICAL_HIGH'
+  | 'ABNORMAL'
+  | 'POSITIVE'
+  | 'REACTIVE'
+  | 'NEGATIVE'
+  | 'NON_REACTIVE';
 
 export interface DoctorSignatory {
   id: string;
@@ -101,9 +113,27 @@ export interface BillingInfo {
   transactionRef?: string;
 }
 
+export interface DispatchAttempt {
+  id: string;
+  reportId: string;
+  channel: 'DIRECT_WHATSAPP' | 'WA_WEB' | 'COPY';
+  recipientPhone: string;
+  templateType: 'standard' | 'detailed' | 'urgent' | 'hindi';
+  status: 'PENDING' | 'SENT' | 'FAILED' | 'UNAVAILABLE';
+  providerMessageId?: string;
+  errorMessage?: string;
+  attemptNumber: number;
+  sentAt?: string;
+  failedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface DiagnosticReport {
   id: string;
   reportNumber: string;
+  version?: number;
+  offlinePending?: boolean;
   patient: Patient;
   tests: TestPanel[];
   clinicalImpression: string;
@@ -113,13 +143,19 @@ export interface DiagnosticReport {
   keyHighlights?: string[];
   dietaryAdvice?: string;
   selectedSignatoryId: string;
-  status: 'DRAFT' | 'VERIFIED' | 'DISPATCHED';
+  status: 'DRAFT' | 'READY_FOR_REVIEW' | 'VERIFIED' | 'DISPATCHED' | 'ARCHIVED';
+  verifiedAt?: string;
+  verifiedBy?: string;
+  publicReportUrl?: string;
   billing: BillingInfo;
   whatsAppLogs: Array<{
     sentAt: string;
     phoneNumber: string;
-    templateType: 'detailed' | 'quick_summary' | 'hindi_bilingual';
+    templateType: 'standard' | 'detailed' | 'urgent' | 'hindi' | 'quick_summary' | 'hindi_bilingual';
+    channel?: 'DIRECT_WHATSAPP' | 'WA_WEB' | 'COPY';
+    deliveryStatus?: 'CONFIRMED' | 'UNAVAILABLE' | 'FAILED';
   }>;
+  dispatchAttempts?: DispatchAttempt[];
   createdAt: string;
   updatedAt: string;
 }

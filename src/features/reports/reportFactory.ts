@@ -6,6 +6,7 @@ import {
   TestTemplate,
 } from '@/domain/types';
 import { computeDerivedValues } from '@/domain/rangeEvaluator';
+import { createId, createReportNumber, createUhid } from '@/app/identifiers';
 
 export function createPanelFromTemplate(template: TestTemplate, gender: 'Male' | 'Female' | 'Other'): TestPanel {
   const parameters: TestParameter[] = computeDerivedValues(
@@ -28,7 +29,7 @@ export function createPanelFromTemplate(template: TestTemplate, gender: 'Male' |
   );
 
   return {
-    id: `panel-${template.id}-${Date.now()}`,
+    id: createId(`panel-${template.id}`),
     templateId: template.id,
     testName: template.name,
     category: template.category,
@@ -50,16 +51,15 @@ export function createBlankReport(
   }
 
   const now = new Date().toISOString();
-  const timestamp = Date.now();
-  const date = now.slice(0, 10).replace(/-/g, '');
   const panel = createPanelFromTemplate(template, 'Other');
 
   return {
-    id: `rep-${timestamp}`,
-    reportNumber: `LAB-${date}-${Math.floor(1000 + Math.random() * 9000)}`,
+    id: createId('rep'),
+    reportNumber: createReportNumber(new Date(now)),
+    version: 1,
     patient: {
-      id: `pat-${timestamp}`,
-      uhid: `UHID-${date.slice(2)}-${Math.floor(100 + Math.random() * 900)}`,
+      id: createId('pat'),
+      uhid: createUhid(new Date(now)),
       name: '',
       age: 0,
       ageUnit: 'Yrs',
@@ -70,7 +70,7 @@ export function createBlankReport(
       sampleCollectedAt: now,
       sampleReceivedAt: now,
       reportGeneratedAt: now,
-      sampleBarcode: `SMPL-${String(timestamp).slice(-6)}`,
+      sampleBarcode: createId('SMPL').replace(/-/g, '').slice(0, 16).toUpperCase(),
       sampleType: template.sampleType,
       fastingStatus: 'N/A',
     },

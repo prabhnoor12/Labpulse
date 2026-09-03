@@ -71,7 +71,7 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({
             </label>
 
             {/* Verify & Sign status */}
-            {report.status !== 'VERIFIED' && (
+            {report.status !== 'VERIFIED' && report.status !== 'DISPATCHED' && (
               <button
                 id="btn-verify-and-sign-doc"
                 type="button"

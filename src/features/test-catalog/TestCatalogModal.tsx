@@ -14,6 +14,7 @@ import {
   ArrowLeft
 } from 'lucide-react';
 import { TestTemplate } from '@/domain/types';
+import { createId } from '@/app/identifiers';
 
 interface TestCatalogModalProps {
   isOpen: boolean;
@@ -62,7 +63,7 @@ export const TestCatalogModal: React.FC<TestCatalogModalProps> = ({
 
   const handleCreateNew = () => {
     const newTmpl: TestTemplate = {
-      id: `custom-test-${Date.now()}`,
+      id: createId('custom-test'),
       name: 'New Custom Diagnostic Test',
       code: 'CUST-001',
       category: 'Biochemistry',
@@ -74,7 +75,7 @@ export const TestCatalogModal: React.FC<TestCatalogModalProps> = ({
       defaultNotes: 'Clinical correlation advised.',
       parameters: [
         {
-          id: `param-${Date.now()}-1`,
+          id: createId('param'),
           name: 'Primary Parameter',
           defaultVal: '10.0',
           unit: 'mg/dL',

@@ -1,0 +1,30 @@
+{$APP_DOMAIN:localhost} {
+  encode gzip
+
+  header {
+    -Server
+    X-Content-Type-Options nosniff
+    Referrer-Policy no-referrer
+    Permissions-Policy "camera=(), microphone=(), geolocation=()"
+  }
+
+  handle /api/* {
+    reverse_proxy backend:3001
+  }
+
+  handle /ready {
+    reverse_proxy backend:3001
+  }
+
+  handle /live {
+    reverse_proxy backend:3001
+  }
+
+  handle /health {
+    reverse_proxy backend:3001
+  }
+
+  root * /srv
+  try_files {path} /index.html
+  file_server
+}

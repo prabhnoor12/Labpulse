@@ -1,0 +1,2 @@
+ALTER TABLE labs
+  ADD COLUMN IF NOT EXISTS settings_version integer NOT NULL DEFAULT 0;

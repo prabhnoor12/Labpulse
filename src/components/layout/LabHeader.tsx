@@ -9,6 +9,7 @@ import {
   Award,
   ShieldCheck,
   FileText
+  ,LogOut
 } from 'lucide-react';
 import { LabProfile } from '@/domain/types';
 
@@ -20,6 +21,8 @@ interface LabHeaderProps {
   onOpenSettings: () => void;
   onOpenCatalog: () => void;
   patientCount: number;
+  userName?: string;
+  onLogout?: () => void;
 }
 
 export const LabHeader: React.FC<LabHeaderProps> = ({
@@ -30,6 +33,8 @@ export const LabHeader: React.FC<LabHeaderProps> = ({
   onOpenSettings,
   onOpenCatalog,
   patientCount,
+  userName,
+  onLogout,
 }) => {
   return (
     <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
@@ -173,6 +178,16 @@ export const LabHeader: React.FC<LabHeaderProps> = ({
               <Settings className="w-4 h-4" />
             </button>
           </div>
+          {onLogout && (
+            <button
+              type="button"
+              onClick={onLogout}
+              title={`Sign out ${userName || ''}`}
+              className="p-2 text-slate-600 hover:text-rose-700 hover:bg-rose-50 rounded-lg border border-slate-200 transition-colors"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          )}
         </div>
       </div>
     </header>

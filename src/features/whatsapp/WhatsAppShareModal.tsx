@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   X, 
   MessageSquare, 
@@ -14,14 +14,19 @@ import {
   PhoneCall
 } from 'lucide-react';
 import { DiagnosticReport, LabProfile } from '@/domain/types';
-import { generateWhatsAppMessage, openWhatsAppChat } from '@/features/whatsapp/whatsappService';
+import { generateWhatsAppMessage, isValidIndianPhone, sanitizeIndianPhone } from '@/features/whatsapp/whatsappService';
+import { generateQrDataUrl } from '@/services/qrService';
 
 interface WhatsAppShareModalProps {
   isOpen: boolean;
   onClose: () => void;
   report: DiagnosticReport;
   lab: LabProfile;
-  onReportDispatched?: (templateType: string) => void;
+  onReportDispatched?: (
+    templateType: 'standard' | 'detailed' | 'urgent' | 'hindi',
+    recipientPhone: string,
+    channel?: 'DIRECT_WHATSAPP' | 'WA_WEB' | 'COPY',
+  ) => void;
   onRecordDispatch?: (channel: 'DIRECT_WHATSAPP' | 'WA_WEB' | 'SMS') => void;
 }
 
@@ -40,8 +45,11 @@ export const WhatsAppShareModal: React.FC<WhatsAppShareModalProps> = ({
   const [copied, setCopied] = useState<boolean>(false);
   const [showQrCode, setShowQrCode] = useState<boolean>(false);
   const [sendSuccess, setSendSuccess] = useState<boolean>(false);
+  const [qrUrl, setQrUrl] = useState<string>('');
 
-  if (!isOpen) return null;
+  useEffect(() => {
+    if (isOpen) setRecipientPhone(report.patient.phone || '');
+  }, [isOpen, report.id, report.patient.phone]);
 
   const currentMessage = generateWhatsAppMessage(report, lab, {
     templateType,
@@ -49,12 +57,32 @@ export const WhatsAppShareModal: React.FC<WhatsAppShareModalProps> = ({
     includeUPIReceipt,
   });
 
-  const cleanPhone = recipientPhone.replace(/\D/g, '');
-  const fullPhone = cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone;
+  const fullPhone = sanitizeIndianPhone(recipientPhone);
+  const isValidRecipient = isValidIndianPhone(recipientPhone);
+  const canDispatch = report.status === 'VERIFIED' || report.status === 'DISPATCHED';
   const encodedText = encodeURIComponent(currentMessage);
   const waUrl = `https://wa.me/${fullPhone}?text=${encodedText}`;
   const waWebUrl = `https://web.whatsapp.com/send?phone=${fullPhone}&text=${encodedText}`;
-  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(waUrl)}`;
+
+  useEffect(() => {
+    let active = true;
+    if (!showQrCode || !isValidRecipient) {
+      setQrUrl('');
+      return () => {
+        active = false;
+      };
+    }
+
+    generateQrDataUrl(waUrl).then((url) => {
+      if (active) setQrUrl(url);
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [isValidRecipient, showQrCode, waUrl]);
+
+  if (!isOpen) return null;
 
   const handleCopy = () => {
     navigator.clipboard.writeText(currentMessage);
@@ -63,13 +91,14 @@ export const WhatsAppShareModal: React.FC<WhatsAppShareModalProps> = ({
   };
 
   const handleSendDirectWhatsApp = () => {
+    if (!isValidRecipient || !canDispatch) return;
     try {
       window.open(waUrl, '_blank', 'noopener,noreferrer');
     } catch {
       window.location.href = waUrl;
     }
     if (onReportDispatched) {
-      onReportDispatched(templateType);
+      onReportDispatched(templateType, fullPhone, 'DIRECT_WHATSAPP');
     }
     if (onRecordDispatch) {
       onRecordDispatch('DIRECT_WHATSAPP');
@@ -144,9 +173,18 @@ export const WhatsAppShareModal: React.FC<WhatsAppShareModalProps> = ({
                     className="w-full px-2.5 py-1.5 border border-slate-300 rounded-r-lg font-mono font-bold text-emerald-950 focus:ring-2 focus:ring-emerald-600 focus:outline-none"
                   />
                 </div>
+                {!isValidRecipient && recipientPhone && (
+                  <p className="mt-1 text-[10px] font-semibold text-rose-600">Enter a valid 10-digit Indian mobile number.</p>
+                )}
               </div>
             </div>
           </div>
+
+          {report.status !== 'VERIFIED' && report.status !== 'DISPATCHED' && (
+            <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-900">
+              Verify and sign this report before sending it to a patient.
+            </div>
+          )}
 
           {/* Template Configuration Pills */}
           <div>
@@ -240,11 +278,11 @@ export const WhatsAppShareModal: React.FC<WhatsAppShareModalProps> = ({
             <div className="flex items-center gap-2">
               <span className="text-[11px] font-bold text-emerald-900">Delivery Channels:</span>
               <a
-                href={waUrl}
+                href={isValidRecipient && canDispatch ? waUrl : '#'}
                 target="_blank"
                 rel="noopener noreferrer"
-                onClick={() => {
-                  if (onReportDispatched) onReportDispatched(templateType);
+                onClick={(event) => {
+                  if (!isValidRecipient || !canDispatch) event.preventDefault();
                   if (onRecordDispatch) onRecordDispatch('DIRECT_WHATSAPP');
                 }}
                 className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-white border border-emerald-300 px-2 py-1 rounded hover:bg-emerald-100 transition-colors"
@@ -253,11 +291,11 @@ export const WhatsAppShareModal: React.FC<WhatsAppShareModalProps> = ({
                 <span>wa.me Link</span>
               </a>
               <a
-                href={waWebUrl}
+                href={isValidRecipient && canDispatch ? waWebUrl : '#'}
                 target="_blank"
                 rel="noopener noreferrer"
-                onClick={() => {
-                  if (onReportDispatched) onReportDispatched(templateType);
+                onClick={(event) => {
+                  if (!isValidRecipient || !canDispatch) event.preventDefault();
                   if (onRecordDispatch) onRecordDispatch('WA_WEB');
                 }}
                 className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-white border border-emerald-300 px-2 py-1 rounded hover:bg-emerald-100 transition-colors"
@@ -343,7 +381,8 @@ export const WhatsAppShareModal: React.FC<WhatsAppShareModalProps> = ({
               id="send-whatsapp-now-btn"
               type="button"
               onClick={handleSendDirectWhatsApp}
-              className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-4 sm:px-5 py-2 rounded-lg text-xs font-extrabold transition-all shadow-xs"
+              disabled={!isValidRecipient || !canDispatch}
+              className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white px-4 sm:px-5 py-2 rounded-lg text-xs font-extrabold transition-all shadow-xs"
             >
               <Send className="w-3.5 h-3.5" />
               <span>Send via WhatsApp (+91)</span>

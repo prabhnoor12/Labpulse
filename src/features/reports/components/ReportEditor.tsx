@@ -24,7 +24,9 @@ import {
   CheckCircle2
 } from 'lucide-react';
 import { DiagnosticReport, LabProfile, TestPanel, TestParameter, TestTemplate } from '@/domain/types';
-import { computeDerivedValues, evaluateParameterFlag } from '@/domain/rangeEvaluator';
+import { computeDerivedValues } from '@/domain/rangeEvaluator';
+import { createId } from '@/app/identifiers';
+import { generateClinicalImpression } from '@/services/aiService';
 
 interface ReportEditorProps {
   report: DiagnosticReport;
@@ -51,13 +53,19 @@ export const ReportEditor: React.FC<ReportEditorProps> = ({
   const [aiLoading, setAiLoading] = useState<boolean>(false);
   const [aiSuccess, setAiSuccess] = useState<boolean>(false);
   const [selectedAddTemplateId, setSelectedAddTemplateId] = useState<string>('');
+  const [isDirty, setIsDirty] = useState<boolean>(false);
 
-  // Keep state synced when prop changes
+  // Sync external updates when there are no unsaved local edits. This keeps
+  // billing/status changes visible without overwriting active data entry.
   React.useEffect(() => {
-    setCurrentReport({ ...report });
-  }, [report.id]);
+    if (report.id !== currentReport.id || !isDirty) {
+      setCurrentReport({ ...report });
+      setIsDirty(false);
+    }
+  }, [currentReport.id, isDirty, report]);
 
   const patient = currentReport.patient;
+  const isFinalized = currentReport.status === 'VERIFIED' || currentReport.status === 'DISPATCHED';
 
   const handlePatientChange = (field: string, value: any) => {
     const updated = {
@@ -68,6 +76,7 @@ export const ReportEditor: React.FC<ReportEditorProps> = ({
       },
     };
     setCurrentReport(updated);
+    setIsDirty(true);
   };
 
   const handleAddTestPanel = (templateId: string) => {
@@ -101,7 +110,7 @@ export const ReportEditor: React.FC<ReportEditorProps> = ({
     const parameters = computeDerivedValues(rawParams);
 
     const newPanel: TestPanel = {
-      id: `panel-${template.id}-${Date.now()}`,
+      id: createId(`panel-${template.id}`),
       templateId: template.id,
       testName: template.name,
       category: template.category,
@@ -126,6 +135,7 @@ export const ReportEditor: React.FC<ReportEditorProps> = ({
     };
 
     setCurrentReport(updated);
+    setIsDirty(true);
     setSelectedAddTemplateId('');
   };
 
@@ -143,6 +153,7 @@ export const ReportEditor: React.FC<ReportEditorProps> = ({
       },
     };
     setCurrentReport(updated);
+    setIsDirty(true);
   };
 
   const handleParameterValueChange = (panelId: string, paramId: string, val: string) => {
@@ -170,6 +181,7 @@ export const ReportEditor: React.FC<ReportEditorProps> = ({
       ...currentReport,
       tests: updatedTests,
     });
+    setIsDirty(true);
   };
 
   const handleFillNormalValues = (panelId: string) => {
@@ -196,6 +208,7 @@ export const ReportEditor: React.FC<ReportEditorProps> = ({
       ...currentReport,
       tests: updatedTests,
     });
+    setIsDirty(true);
   };
 
   const handleRunAiImpression = async () => {
@@ -203,47 +216,7 @@ export const ReportEditor: React.FC<ReportEditorProps> = ({
     setAiSuccess(false);
 
     try {
-      // Gather abnormal values
-      const abnormalList: any[] = [];
-      currentReport.tests.forEach((t) => {
-        t.parameters.forEach((p) => {
-          if (p.flag && p.flag !== 'NORMAL') {
-            abnormalList.push({
-              test: t.testName,
-              name: p.name,
-              value: p.value,
-              unit: p.unit,
-              flag: p.flag,
-              refRange: p.refRange,
-            });
-          }
-        });
-      });
-
-      const res = await fetch('/api/ai/clinical-impression', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          patient: currentReport.patient,
-          tests: currentReport.tests.map((t) => ({
-            name: t.testName,
-            parameters: t.parameters.map((p) => ({
-              name: p.name,
-              value: p.value,
-              unit: p.unit,
-              flag: p.flag,
-            })),
-          })),
-          abnormalParameters: abnormalList,
-          notes: currentReport.pathologistNotes,
-        }),
-      });
-
-      if (!res.ok) {
-        throw new Error('AI interpretation service temporarily unavailable');
-      }
-
-      const data = await res.json();
+      const data = await generateClinicalImpression(currentReport);
 
       const updated = {
         ...currentReport,
@@ -256,11 +229,12 @@ export const ReportEditor: React.FC<ReportEditorProps> = ({
       };
 
       setCurrentReport(updated);
+      setIsDirty(true);
       setAiSuccess(true);
       setTimeout(() => setAiSuccess(false), 3000);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      alert('Error generating clinical impression: ' + err.message);
+      alert('Error generating clinical impression: ' + (err instanceof Error ? err.message : 'Unknown error'));
     } finally {
       setAiLoading(false);
     }
@@ -272,6 +246,7 @@ export const ReportEditor: React.FC<ReportEditorProps> = ({
       updatedAt: new Date().toISOString(),
     };
     onSaveReport(updated);
+    setIsDirty(false);
   };
 
   return (
@@ -284,10 +259,17 @@ export const ReportEditor: React.FC<ReportEditorProps> = ({
             <span className="font-mono text-teal-800">{currentReport.reportNumber}</span>
           </div>
           <span className={`px-2.5 py-1 rounded-md text-[11px] sm:text-xs font-bold uppercase ${
-            currentReport.status === 'VERIFIED' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-700'
+            currentReport.status === 'VERIFIED' || currentReport.status === 'DISPATCHED'
+              ? 'bg-emerald-100 text-emerald-800'
+              : currentReport.status === 'READY_FOR_REVIEW'
+              ? 'bg-amber-100 text-amber-800'
+              : 'bg-slate-100 text-slate-700'
           }`}>
             {currentReport.status}
           </span>
+          {isFinalized && (
+            <span className="text-[10px] font-semibold text-slate-500">Finalized reports are locked</span>
+          )}
         </div>
 
         {/* Action Buttons Grid on Mobile, Flex on Desktop */}
@@ -341,6 +323,7 @@ export const ReportEditor: React.FC<ReportEditorProps> = ({
             id="btn-save-report-changes"
             type="button"
             onClick={handleSave}
+            disabled={isFinalized}
             className="col-span-2 sm:col-span-1 flex items-center justify-center gap-1.5 bg-teal-800 hover:bg-teal-900 text-white text-xs font-bold px-3.5 sm:px-4 py-2 rounded-lg transition-all shadow-xs"
           >
             <Save className="w-3.5 h-3.5 shrink-0" />
@@ -349,6 +332,7 @@ export const ReportEditor: React.FC<ReportEditorProps> = ({
         </div>
       </div>
 
+      <fieldset disabled={isFinalized} className="contents">
       {/* 1. Patient Demographics & Sample Meta */}
       <section className="bg-white rounded-xl border border-slate-200 shadow-xs p-4 sm:p-5">
         <div className="flex flex-wrap items-center justify-between pb-3 mb-4 border-b border-slate-200 gap-2">
@@ -501,7 +485,10 @@ export const ReportEditor: React.FC<ReportEditorProps> = ({
             <select
               id="report-signatory-select"
               value={currentReport.selectedSignatoryId}
-              onChange={(e) => setCurrentReport({ ...currentReport, selectedSignatoryId: e.target.value })}
+              onChange={(e) => {
+                setCurrentReport({ ...currentReport, selectedSignatoryId: e.target.value });
+                setIsDirty(true);
+              }}
               className="w-full px-3 py-2 border border-slate-300 rounded-lg font-semibold text-slate-800"
             >
               {lab.signatories.map((doc) => (
@@ -761,7 +748,10 @@ export const ReportEditor: React.FC<ReportEditorProps> = ({
               id="clinical-impression-textarea"
               rows={3}
               value={currentReport.clinicalImpression}
-              onChange={(e) => setCurrentReport({ ...currentReport, clinicalImpression: e.target.value })}
+                onChange={(e) => {
+                  setCurrentReport({ ...currentReport, clinicalImpression: e.target.value });
+                  setIsDirty(true);
+                }}
               placeholder="e.g. Microcytic Hypochromic Anemia with elevated RDW / Impaired Glycemic Control..."
               className="w-full p-2.5 border border-slate-300 rounded-lg font-medium text-slate-900 focus:ring-2 focus:ring-teal-600 focus:outline-none"
             />
@@ -776,7 +766,10 @@ export const ReportEditor: React.FC<ReportEditorProps> = ({
               id="pathologist-notes-input"
               type="text"
               value={currentReport.pathologistNotes}
-              onChange={(e) => setCurrentReport({ ...currentReport, pathologistNotes: e.target.value })}
+                onChange={(e) => {
+                  setCurrentReport({ ...currentReport, pathologistNotes: e.target.value });
+                  setIsDirty(true);
+                }}
               placeholder="e.g. Recommend serum ferritin correlation. Internal quality controls verified."
               className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-800"
             />
@@ -792,7 +785,10 @@ export const ReportEditor: React.FC<ReportEditorProps> = ({
                 id="patient-summary-en-textarea"
                 rows={2}
                 value={currentReport.patientSummaryEn}
-                onChange={(e) => setCurrentReport({ ...currentReport, patientSummaryEn: e.target.value })}
+                onChange={(e) => {
+                  setCurrentReport({ ...currentReport, patientSummaryEn: e.target.value });
+                  setIsDirty(true);
+                }}
                 placeholder="Easy explanation for patient in simple English..."
                 className="w-full p-2 border border-slate-300 rounded-lg text-xs"
               />
@@ -807,7 +803,10 @@ export const ReportEditor: React.FC<ReportEditorProps> = ({
                 id="patient-summary-hi-textarea"
                 rows={2}
                 value={currentReport.patientSummaryHi}
-                onChange={(e) => setCurrentReport({ ...currentReport, patientSummaryHi: e.target.value })}
+                onChange={(e) => {
+                  setCurrentReport({ ...currentReport, patientSummaryHi: e.target.value });
+                  setIsDirty(true);
+                }}
                 placeholder="मरीज के लिए आसान भाषा में सारांश..."
                 className="w-full p-2 border border-slate-300 rounded-lg text-xs font-hindi text-slate-800"
               />
@@ -831,6 +830,7 @@ export const ReportEditor: React.FC<ReportEditorProps> = ({
           <button
             type="button"
             onClick={handleSave}
+            disabled={isFinalized}
             className="flex-1 sm:flex-initial px-3.5 py-2 border border-slate-600 hover:bg-slate-800 rounded-lg text-xs font-bold transition-colors text-center"
           >
             Save Draft
@@ -855,6 +855,7 @@ export const ReportEditor: React.FC<ReportEditorProps> = ({
           </button>
         </div>
       </div>
+      </fieldset>
     </div>
   );
 };

@@ -10,6 +10,7 @@ import {
   Check 
 } from 'lucide-react';
 import { LabProfile, DoctorSignatory } from '@/domain/types';
+import { createId } from '@/app/identifiers';
 
 interface LabSettingsModalProps {
   isOpen: boolean;
@@ -37,7 +38,7 @@ export const LabSettingsModal: React.FC<LabSettingsModalProps> = ({
 
   const handleAddSignatory = () => {
     const newSign: DoctorSignatory = {
-      id: `doc-${Date.now()}`,
+      id: createId('doc'),
       name: 'Dr. New Pathologist',
       degrees: 'MBBS, MD (Pathology)',
       regNumber: 'MCI / DMC - 00000',
