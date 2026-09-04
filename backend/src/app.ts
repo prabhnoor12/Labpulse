@@ -10,6 +10,7 @@ import patientsRoutes from './http/routes/patients';
 import reportsRoutes from './http/routes/reports';
 import aiRoutes from './http/routes/ai';
 import publicReportsRoutes from './http/routes/publicReports';
+import usersRoutes from './http/routes/users';
 import { errorHandler } from './http/middleware/error';
 import { requestSecurity } from './http/middleware/security';
 import { PostgresRateLimitStore } from './db/rateLimitStore';
@@ -82,6 +83,7 @@ app.use('/api/auth', sharedLimiter('auth', 60_000, 20), authRoutes);
 app.use('/api/ai', sharedLimiter('ai', 60_000, 20), aiRoutes);
 app.use('/api/public/reports', sharedLimiter('public-reports', 60_000, 60), publicReportsRoutes);
 app.use('/api/lab', labRoutes);
+app.use('/api/users', usersRoutes);
 app.use('/api/patients', patientsRoutes);
 app.use('/api/reports', reportsRoutes);
 

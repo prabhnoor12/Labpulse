@@ -18,7 +18,7 @@
     color: black !important;
   }
   
-  header, nav, button, .print\:hidden, aside, .sticky {
+  .app-shell-header, nav, button, .print\:hidden, aside, .sticky {
     display: none !important;
   }
 

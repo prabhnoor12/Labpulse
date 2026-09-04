@@ -27,9 +27,21 @@ export function validateReportForVerification(
   if (!['Yrs', 'Months', 'Days'].includes(patient.ageUnit)) errors.push('Patient age unit is invalid.');
   if (!['Male', 'Female', 'Other'].includes(patient.gender)) errors.push('Patient gender is invalid.');
   if (!Number.isFinite(patient.age) || patient.age < 0 || patient.age > 120) errors.push('Patient age must be between 0 and 120.');
+  if (!patient.accessionNumber.trim()) errors.push('Accession number is required.');
+  if (patient.accessionNumber && !/^ACC-[A-Z0-9-]{6,64}$/.test(patient.accessionNumber.trim())) errors.push('Accession number format is invalid.');
+  if (!['RECEIVED', 'PROCESSING', 'RESULTS_PENDING', 'COMPLETE'].includes(patient.specimenStatus)) {
+    errors.push('Specimen must be received before the report can be verified.');
+  }
+  if (patient.specimenStatus === 'REJECTED' && !patient.sampleRejectionReason?.trim()) {
+    errors.push('A specimen rejection reason is required.');
+  }
   if (!isValidIsoDate(patient.sampleCollectedAt)) errors.push('Sample collection time is invalid.');
   if (!isValidIsoDate(patient.sampleReceivedAt)) errors.push('Sample receipt time is invalid.');
   if (!isValidIsoDate(patient.reportGeneratedAt)) errors.push('Report generation time is invalid.');
+  if (isValidIsoDate(patient.sampleCollectedAt) && isValidIsoDate(patient.sampleReceivedAt)
+    && Date.parse(patient.sampleReceivedAt) < Date.parse(patient.sampleCollectedAt)) {
+    errors.push('Sample receipt time cannot be before collection time.');
+  }
 
   if (!report.tests.length) {
     errors.push('At least one test panel is required.');
@@ -45,6 +57,13 @@ export function validateReportForVerification(
       }
     });
   });
+
+  const hasCriticalResult = report.tests.some((test) => test.parameters.some((parameter) => (
+    parameter.flag === 'CRITICAL_LOW' || parameter.flag === 'CRITICAL_HIGH'
+  )));
+  if (hasCriticalResult && report.criticalResultStatus !== 'ACKNOWLEDGED') {
+    errors.push('Critical result(s) must be acknowledged before verification.');
+  }
 
   const signatory = lab.signatories.find((item) => item.id === report.selectedSignatoryId);
   if (!signatory) errors.push('A valid consultant pathologist signatory must be selected.');

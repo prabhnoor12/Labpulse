@@ -24,6 +24,10 @@ export interface ReportRecord {
   labId: string;
   patientId: string;
   reportNumber: string;
+  accessionNumber: string | null;
+  supersedesReportId: string | null;
+  amendmentReason: string | null;
+  amendmentNumber: number | null;
   clientId: string | null;
   status: string;
   currentVersion: number;
@@ -88,6 +92,14 @@ function arrayField(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
 }
 
+function hasCriticalResults(data: Record<string, unknown>): boolean {
+  return arrayField(data.tests).filter(isRecord).some((test) => (
+    arrayField(test.parameters).some((parameter) => (
+      isRecord(parameter) && (parameter.flag === 'CRITICAL_LOW' || parameter.flag === 'CRITICAL_HIGH')
+    ))
+  ));
+}
+
 function publicString(value: unknown, maxLength = 2_000): string | undefined {
   const result = stringField(value).trim().slice(0, maxLength);
   return result || undefined;
@@ -114,7 +126,8 @@ function sanitizePublicPatientData(data: unknown): Record<string, unknown> {
 
   for (const field of [
     'ageUnit', 'gender', 'referringDoctor', 'sampleCollectedAt', 'sampleReceivedAt',
-    'reportGeneratedAt', 'sampleType', 'fastingStatus', 'sampleBarcode',
+    'reportGeneratedAt', 'sampleType', 'accessionNumber', 'specimenStatus',
+    'sampleRejectionReason', 'sampleCollectedBy', 'sampleReceivedBy', 'fastingStatus', 'sampleBarcode',
   ]) {
     const value = publicString(data[field]);
     if (value) safe[field] = value;
@@ -336,10 +349,18 @@ async function audit(client: PoolClient, user: AuthenticatedUser, action: string
 
 const selectReport = `
   SELECT r.id, r.lab_id AS "labId", r.patient_id AS "patientId", r.report_number AS "reportNumber", r.client_id AS "clientId",
+         r.accession_number AS "accessionNumber",
+         r.supersedes_report_id AS "supersedesReportId", r.amendment_reason AS "amendmentReason", r.amendment_number AS "amendmentNumber",
          r.status, r.current_version AS "currentVersion", ${currentReportDataSql} AS data,
          r.verified_by AS "verifiedBy", r.verified_at AS "verifiedAt", r.dispatched_at AS "dispatchedAt",
          r.created_at AS "createdAt", r.updated_at AS "updatedAt",
-         json_build_object('id', p.id, 'uhid', p.uhid, 'name', p.name, 'phone', p.phone, 'data', p.data) AS patient,
+         json_build_object(
+           'id', p.id,
+           'uhid', COALESCE(r.data->'patient'->>'uhid', p.uhid),
+           'name', COALESCE(r.data->'patient'->>'name', p.name),
+           'phone', COALESCE(r.data->'patient'->>'phone', p.phone),
+           'data', CASE WHEN jsonb_typeof(r.data->'patient') = 'object' THEN r.data->'patient' ELSE p.data END
+         ) AS patient,
          COALESCE((
            SELECT json_agg(json_build_object(
              'id', da.id, 'reportId', da.report_id, 'channel', da.channel,
@@ -381,9 +402,17 @@ export async function createReport(user: AuthenticatedUser, input: ReportInput, 
     );
     const actualPatientId = patient.rows[0].id;
     await client.query(
-      `INSERT INTO reports (id, lab_id, patient_id, report_number, client_id, data)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [id, user.labId, actualPatientId, number, input.clientId || null, JSON.stringify(stripNormalizedFields(input.data))],
+      `INSERT INTO reports (id, lab_id, patient_id, report_number, client_id, accession_number, data)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [
+        id,
+        user.labId,
+        actualPatientId,
+        number,
+        input.clientId || null,
+        isRecord(input.patient.data) ? stringField(input.patient.data.accessionNumber) || null : null,
+        JSON.stringify(stripNormalizedFields(input.data)),
+      ],
     );
     await replaceNormalizedReportCore(client, id, input.data);
     await client.query(
@@ -397,15 +426,16 @@ export async function createReport(user: AuthenticatedUser, input: ReportInput, 
   }));
 }
 
-export async function listReports(user: AuthenticatedUser, search?: string, status?: string): Promise<ReportRecord[]> {
+export async function listReports(user: AuthenticatedUser, search?: string, status?: string, limit = 100, offset = 0): Promise<ReportRecord[]> {
   const values: string[] = [user.labId];
   const conditions = ['r.lab_id = $1', 'r.archived_at IS NULL'];
   if (status) { values.push(status); conditions.push(`r.status = $${values.length}`); }
   if (search) {
     values.push(`%${search}%`);
-    conditions.push(`(r.report_number ILIKE $${values.length} OR p.name ILIKE $${values.length} OR p.uhid ILIKE $${values.length} OR p.phone ILIKE $${values.length})`);
+    conditions.push(`(r.report_number ILIKE $${values.length} OR r.accession_number ILIKE $${values.length} OR COALESCE(r.data->'patient'->>'name', p.name) ILIKE $${values.length} OR COALESCE(r.data->'patient'->>'uhid', p.uhid) ILIKE $${values.length} OR COALESCE(r.data->'patient'->>'phone', p.phone) ILIKE $${values.length})`);
   }
-  const result = await pool.query<ReportRecord>(`${selectReport} WHERE ${conditions.join(' AND ')} ORDER BY r.updated_at DESC LIMIT 100`, values);
+  values.push(String(limit), String(offset));
+  const result = await pool.query<ReportRecord>(`${selectReport} WHERE ${conditions.join(' AND ')} ORDER BY r.updated_at DESC LIMIT $${values.length - 1} OFFSET $${values.length}`, values);
   return result.rows;
 }
 
@@ -480,7 +510,9 @@ export async function recordDispatchAttempt(
     );
     await client.query(
       `UPDATE reports
-          SET updated_at = now(),
+          SET status = 'DISPATCHED',
+              dispatched_at = COALESCE(dispatched_at, now()),
+              updated_at = now(),
               data = jsonb_set(data, '{whatsAppLogs}', COALESCE(data->'whatsAppLogs', '[]'::jsonb) || jsonb_build_array($1::jsonb), true)
         WHERE id = $2 AND lab_id = $3`,
       [JSON.stringify({ ...dispatchLog, deliveryStatus }), id, user.labId],
@@ -499,8 +531,9 @@ export async function recordDispatchAttempt(
 
 export async function updateDraft(user: AuthenticatedUser, id: string, input: ReportInput, idempotency?: IdempotencyContext): Promise<ReportRecord> {
   return transaction(async (client) => executeIdempotent(client, idempotency, async () => {
-    const existing = await client.query<{ currentVersion: number; status: string; patientId: string }>(
-      `SELECT current_version AS "currentVersion", status, patient_id AS "patientId" FROM reports WHERE id = $1 AND lab_id = $2 FOR UPDATE`,
+    const existing = await client.query<{ currentVersion: number; status: string; patientId: string; supersedesReportId: string | null }>(
+      `SELECT current_version AS "currentVersion", status, patient_id AS "patientId", supersedes_report_id AS "supersedesReportId"
+         FROM reports WHERE id = $1 AND lab_id = $2 FOR UPDATE`,
       [id, user.labId],
     );
     const row = existing.rows[0];
@@ -508,23 +541,151 @@ export async function updateDraft(user: AuthenticatedUser, id: string, input: Re
     if (!['DRAFT', 'READY_FOR_REVIEW'].includes(row.status)) throw new Error('REPORT_NOT_EDITABLE');
     if (input.version !== undefined && input.version !== row.currentVersion) throw new Error('REPORT_CONFLICT');
     const version = row.currentVersion + 1;
+    if (!row.supersedesReportId) {
+      await client.query(
+        `UPDATE patients SET uhid = $1, name = $2, phone = $3, data = $4, updated_at = now()
+         WHERE id = $5 AND lab_id = $6`,
+        [input.patient.uhid, input.patient.name, input.patient.phone, JSON.stringify(input.patient.data || {}), row.patientId, user.labId],
+      );
+    }
+    const updatedData = {
+      ...input.data,
+      criticalResultStatus: hasCriticalResults(input.data) ? 'PENDING' : 'NOT_APPLICABLE',
+      criticalResultNotes: '',
+      criticalResultAcknowledgedBy: undefined,
+      criticalResultAcknowledgedAt: undefined,
+    };
     await client.query(
-      `UPDATE patients SET uhid = $1, name = $2, phone = $3, data = $4, updated_at = now()
-       WHERE id = $5 AND lab_id = $6`,
-      [input.patient.uhid, input.patient.name, input.patient.phone, JSON.stringify(input.patient.data || {}), row.patientId, user.labId],
-    );
-    await client.query(
-      `UPDATE reports SET data = $1, current_version = $2, status = 'DRAFT', updated_at = now()
-       WHERE id = $3 AND lab_id = $4`,
-      [JSON.stringify(stripNormalizedFields(input.data)), version, id, user.labId],
+      `UPDATE reports SET data = $1, accession_number = $2, current_version = $3, status = 'DRAFT', updated_at = now()
+       WHERE id = $4 AND lab_id = $5`,
+      [
+        JSON.stringify(stripNormalizedFields(updatedData)),
+        isRecord(input.patient.data) ? stringField(input.patient.data.accessionNumber) || null : null,
+        version,
+        id,
+        user.labId,
+      ],
     );
     await replaceNormalizedReportCore(client, id, input.data);
     await client.query(
       `INSERT INTO report_versions (id, report_id, version, data, created_by) VALUES ($1, $2, $3, $4, $5)`,
-      [crypto.randomUUID(), id, version, JSON.stringify(input.data), user.id],
+      [crypto.randomUUID(), id, version, JSON.stringify(updatedData), user.id],
     );
     await audit(client, user, 'REPORT_UPDATED', id, { version, requestId: idempotency?.requestId });
     const result = await client.query<ReportRecord>(`${selectReport} WHERE r.id = $1 AND r.lab_id = $2`, [id, user.labId]);
+    return one(result)!;
+  }));
+}
+
+export async function acknowledgeCriticalResults(
+  user: AuthenticatedUser,
+  id: string,
+  notes: string,
+  expectedVersion?: number,
+  idempotency?: IdempotencyContext,
+): Promise<ReportRecord> {
+  return transaction(async (client) => executeIdempotent(client, idempotency, async () => {
+    const existing = await client.query<{ currentVersion: number; status: string; data: Record<string, unknown> }>(
+      `SELECT current_version AS "currentVersion", status, ${currentReportDataSql} AS data
+         FROM reports WHERE id = $1 AND lab_id = $2 FOR UPDATE`,
+      [id, user.labId],
+    );
+    const row = existing.rows[0];
+    if (!row) throw new Error('REPORT_NOT_FOUND');
+    if (!['DRAFT', 'READY_FOR_REVIEW'].includes(row.status)) throw new Error('REPORT_NOT_EDITABLE');
+    if (expectedVersion !== undefined && expectedVersion !== row.currentVersion) throw new Error('REPORT_CONFLICT');
+
+    if (!hasCriticalResults(row.data)) throw new Error('NO_CRITICAL_RESULTS');
+
+    const version = row.currentVersion + 1;
+    const acknowledgedAt = new Date().toISOString();
+    const data = {
+      ...row.data,
+      criticalResultStatus: 'ACKNOWLEDGED',
+      criticalResultNotes: notes.trim(),
+      criticalResultAcknowledgedBy: user.id,
+      criticalResultAcknowledgedAt: acknowledgedAt,
+    };
+    await client.query(
+      `UPDATE reports SET data = $1, current_version = $2, updated_at = now()
+       WHERE id = $3 AND lab_id = $4`,
+      [JSON.stringify(stripNormalizedFields(data)), version, id, user.labId],
+    );
+    await client.query(
+      `INSERT INTO report_versions (id, report_id, version, data, created_by)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [crypto.randomUUID(), id, version, JSON.stringify(data), user.id],
+    );
+    await audit(client, user, 'CRITICAL_RESULTS_ACKNOWLEDGED', id, {
+      version,
+      notesLength: notes.trim().length,
+      requestId: idempotency?.requestId,
+    });
+    const result = await client.query<ReportRecord>(`${selectReport} WHERE r.id = $1 AND r.lab_id = $2`, [id, user.labId]);
+    return one(result)!;
+  }));
+}
+
+export async function createAmendment(
+  user: AuthenticatedUser,
+  id: string,
+  reason: string,
+  idempotency?: IdempotencyContext,
+): Promise<ReportRecord> {
+  return transaction(async (client) => executeIdempotent(client, idempotency, async () => {
+    const existing = await client.query<{
+      reportNumber: string;
+      accessionNumber: string | null;
+      status: string;
+      data: Record<string, unknown>;
+      patientId: string;
+    }>(
+      `SELECT r.report_number AS "reportNumber", r.accession_number AS "accessionNumber", r.status,
+              ${currentReportDataSql} AS data, r.patient_id AS "patientId"
+         FROM reports r WHERE r.id = $1 AND r.lab_id = $2 FOR UPDATE`,
+      [id, user.labId],
+    );
+    const row = existing.rows[0];
+    if (!row) throw new Error('REPORT_NOT_FOUND');
+    if (!['VERIFIED', 'DISPATCHED'].includes(row.status)) throw new Error('REPORT_NOT_AMENDABLE');
+
+    const count = await client.query<{ count: string }>(
+      'SELECT COUNT(*)::text AS count FROM reports WHERE supersedes_report_id = $1 AND lab_id = $2',
+      [id, user.labId],
+    );
+    const amendmentNumber = Number(count.rows[0].count) + 1;
+    const reportId = crypto.randomUUID();
+    const reportNumber = `${row.reportNumber}-A${amendmentNumber}`;
+    const data = {
+      ...row.data,
+      amendmentReason: reason.trim(),
+      amendmentNumber,
+      amendmentOf: id,
+      criticalResultStatus: hasCriticalResults(row.data) ? 'PENDING' : 'NOT_APPLICABLE',
+      criticalResultNotes: '',
+      criticalResultAcknowledgedBy: undefined,
+      criticalResultAcknowledgedAt: undefined,
+    };
+
+    await client.query(
+      `UPDATE reports SET status = 'SUPERSEDED', updated_at = now() WHERE id = $1 AND lab_id = $2`,
+      [id, user.labId],
+    );
+    await client.query(
+      `INSERT INTO reports
+        (id, lab_id, patient_id, report_number, client_id, accession_number, supersedes_report_id, amendment_reason, amendment_number, data)
+       VALUES ($1, $2, $3, $4, NULL, $5, $6, $7, $8, $9)`,
+      [reportId, user.labId, row.patientId, reportNumber, row.accessionNumber, id, reason.trim(), amendmentNumber, JSON.stringify(stripNormalizedFields(data))],
+    );
+    await replaceNormalizedReportCore(client, reportId, data);
+    await client.query(
+      `INSERT INTO report_versions (id, report_id, version, data, created_by)
+       VALUES ($1, $2, 1, $3, $4)`,
+      [crypto.randomUUID(), reportId, JSON.stringify(data), user.id],
+    );
+    await audit(client, user, 'REPORT_SUPERSEDED', id, { amendmentId: reportId, amendmentNumber, requestId: idempotency?.requestId });
+    await audit(client, user, 'REPORT_AMENDMENT_CREATED', reportId, { supersedesReportId: id, amendmentNumber, requestId: idempotency?.requestId });
+    const result = await client.query<ReportRecord>(`${selectReport} WHERE r.id = $1 AND r.lab_id = $2`, [reportId, user.labId]);
     return one(result)!;
   }));
 }
@@ -541,7 +702,10 @@ export async function transitionReport(user: AuthenticatedUser, id: string, next
       patientData: Record<string, unknown>;
       labData: Record<string, unknown>;
     }>(
-      `SELECT r.status, r.current_version AS "currentVersion", ${currentReportDataSql} AS data, p.name AS "patientName", p.phone AS "patientPhone", p.data AS "patientData",
+      `SELECT r.status, r.current_version AS "currentVersion", ${currentReportDataSql} AS data,
+              COALESCE(r.data->'patient'->>'name', p.name) AS "patientName",
+              COALESCE(r.data->'patient'->>'phone', p.phone) AS "patientPhone",
+              CASE WHEN jsonb_typeof(r.data->'patient') = 'object' THEN r.data->'patient' ELSE p.data END AS "patientData",
               COALESCE(lp.data, '{}'::jsonb) AS "labData"
          FROM reports r
          JOIN patients p ON p.id = r.patient_id
@@ -619,7 +783,11 @@ export async function getPublicReport(token: string): Promise<PublicReportRecord
   const result = await pool.query<PublicReportRecord>(
     `SELECT r.report_number AS "reportNumber", r.status, ${currentReportDataSql} AS data,
             r.verified_at AS "verifiedAt", r.dispatched_at AS "dispatchedAt",
-            json_build_object('uhid', p.uhid, 'name', p.name, 'data', p.data) AS patient,
+            json_build_object(
+              'uhid', COALESCE(r.data->'patient'->>'uhid', p.uhid),
+              'name', COALESCE(r.data->'patient'->>'name', p.name),
+              'data', CASE WHEN jsonb_typeof(r.data->'patient') = 'object' THEN r.data->'patient' ELSE p.data END
+            ) AS patient,
             COALESCE(lp.data, '{}'::jsonb) AS lab
        FROM report_public_links l
        JOIN reports r ON r.id = l.report_id

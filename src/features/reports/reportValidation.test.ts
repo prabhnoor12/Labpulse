@@ -28,6 +28,8 @@ test('accepts a complete report with consistent billing', () => {
   };
   report.patient.name = 'Test Patient';
   report.patient.phone = '9876543210';
+  report.patient.specimenStatus = 'COMPLETE';
+  report.patient.sampleReceivedAt = new Date().toISOString();
   report.selectedSignatoryId = 'pathologist-1';
 
   const result = validateReportForVerification(report, lab);

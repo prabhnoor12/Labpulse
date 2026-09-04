@@ -11,10 +11,21 @@ export interface ApiUser {
 
 export type CurrentUser = ApiUser;
 
+export interface StaffUser {
+  id: string;
+  name: string;
+  email: string;
+  role: Exclude<ApiUser['role'], 'OWNER'>;
+  active: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface BackendReportRecord {
   id: string;
   reportNumber: string;
   clientId?: string | null;
+  accessionNumber?: string | null;
   currentVersion?: number;
   status: string;
   data: Record<string, unknown>;
@@ -69,6 +80,9 @@ async function request<T>(path: string, init: RequestInit = {}, onSuccess?: (res
   }
 
   if (!response.ok) {
+    if (response.status === 401 && !path.startsWith('/api/auth/') && typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('labpulse-session-expired'));
+    }
     const message = isRecord(payload) && typeof payload.error === 'string' ? payload.error : 'Request failed.';
     throw new ApiError(response.status, message);
   }
@@ -84,7 +98,7 @@ export function toDiagnosticReport(record: BackendReportRecord | PublicReportRes
   const dataPatient = isRecord(data.patient) ? data.patient : {};
   const backendPatient = record.patient;
   const dataBilling = isRecord(data.billing) ? data.billing : {};
-  const status: DiagnosticReport['status'] = record.status === 'READY_FOR_REVIEW' || record.status === 'VERIFIED' || record.status === 'DISPATCHED' || record.status === 'ARCHIVED'
+  const status: DiagnosticReport['status'] = record.status === 'READY_FOR_REVIEW' || record.status === 'VERIFIED' || record.status === 'DISPATCHED' || record.status === 'ARCHIVED' || record.status === 'SUPERSEDED'
     ? record.status
     : 'DRAFT';
 
@@ -92,6 +106,9 @@ export function toDiagnosticReport(record: BackendReportRecord | PublicReportRes
     ...(data as unknown as DiagnosticReport),
     id: 'id' in record ? record.id : String(data.id || record.reportNumber),
     reportNumber: record.reportNumber,
+    supersedesReportId: typeof data.supersedesReportId === 'string' ? data.supersedesReportId : undefined,
+    amendmentReason: typeof data.amendmentReason === 'string' ? data.amendmentReason : undefined,
+    amendmentNumber: typeof data.amendmentNumber === 'number' ? data.amendmentNumber : undefined,
     version: 'currentVersion' in record && typeof record.currentVersion === 'number'
       ? record.currentVersion
       : typeof data.version === 'number' ? data.version : undefined,
@@ -101,8 +118,15 @@ export function toDiagnosticReport(record: BackendReportRecord | PublicReportRes
       ...(backendPatient.data || {}),
       id: String('id' in backendPatient ? backendPatient.id : dataPatient.id || `patient-${record.reportNumber}`),
       uhid: backendPatient.uhid,
+      accessionNumber: String(('accessionNumber' in record && record.accessionNumber) || dataPatient.accessionNumber || ''),
       name: backendPatient.name,
       phone: 'phone' in backendPatient ? backendPatient.phone : '',
+      specimenStatus: ['ORDERED', 'COLLECTED', 'RECEIVED', 'PROCESSING', 'REJECTED', 'RESULTS_PENDING', 'COMPLETE'].includes(String(dataPatient.specimenStatus))
+        ? String(dataPatient.specimenStatus) as DiagnosticReport['patient']['specimenStatus']
+        : 'ORDERED',
+      sampleRejectionReason: typeof dataPatient.sampleRejectionReason === 'string' ? dataPatient.sampleRejectionReason : '',
+      sampleCollectedBy: typeof dataPatient.sampleCollectedBy === 'string' ? dataPatient.sampleCollectedBy : '',
+      sampleReceivedBy: typeof dataPatient.sampleReceivedBy === 'string' ? dataPatient.sampleReceivedBy : '',
     },
     tests: Array.isArray(data.tests) ? data.tests as DiagnosticReport['tests'] : [],
     billing: {
@@ -154,11 +178,26 @@ function mutationHeaders(idempotencyKey: string): HeadersInit {
 }
 
 export const apiClient = {
+  signup(labName: string, name: string, email: string, password: string) {
+    return request<{ user: ApiUser }>('/api/auth/signup', {
+      method: 'POST',
+      body: JSON.stringify({ labName, name, email, password }),
+    });
+  },
   login(email: string, password: string) {
     return request<{ user: ApiUser }>('/api/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) });
   },
   me() {
     return request<{ user: ApiUser }>('/api/auth/me');
+  },
+  staffUsers() {
+    return request<{ users: StaffUser[] }>('/api/users');
+  },
+  createStaff(input: { name: string; email: string; password: string; role: StaffUser['role'] }) {
+    return request<{ user: StaffUser }>('/api/users', { method: 'POST', body: JSON.stringify(input) });
+  },
+  updateStaff(id: string, input: { name?: string; password?: string; role?: StaffUser['role']; active?: boolean }) {
+    return request<{ user: StaffUser }>(`/api/users/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(input) });
   },
   logout() {
     return request<void>('/api/auth/logout', { method: 'POST' });
@@ -177,8 +216,8 @@ export const apiClient = {
       labProfileEtag = response.headers.get('ETag') || labProfileEtag;
     });
   },
-  reports() {
-    return request<{ reports: BackendReportRecord[] }>('/api/reports');
+  reports(limit = 100, offset = 0) {
+    return request<{ reports: BackendReportRecord[] }>(`/api/reports?limit=${limit}&offset=${offset}`);
   },
   createReport(report: DiagnosticReport, idempotencyKey = `create-${report.id}`) {
     return request<{ report: BackendReportRecord }>('/api/reports', { method: 'POST', headers: mutationHeaders(idempotencyKey), body: JSON.stringify(reportPayload(report)) });
@@ -191,6 +230,20 @@ export const apiClient = {
   },
   verifyReport(id: string, version?: number, idempotencyKey = `verify-${id}-${version ?? 'latest'}`) {
     return request<{ report: BackendReportRecord }>(`/api/reports/${encodeURIComponent(id)}/verify`, { method: 'POST', headers: mutationHeaders(idempotencyKey), body: JSON.stringify(version === undefined ? {} : { version }) });
+  },
+  acknowledgeCriticalResults(id: string, version: number | undefined, notes: string, idempotencyKey = `critical-ack-${id}-${version ?? 'latest'}`) {
+    return request<{ report: BackendReportRecord }>(`/api/reports/${encodeURIComponent(id)}/critical-results/acknowledge`, {
+      method: 'POST',
+      headers: mutationHeaders(idempotencyKey),
+      body: JSON.stringify({ ...(version === undefined ? {} : { version }), notes }),
+    });
+  },
+  amendReport(id: string, reason: string, idempotencyKey = `amend-${id}-${crypto.randomUUID()}`) {
+    return request<{ report: BackendReportRecord }>(`/api/reports/${encodeURIComponent(id)}/amend`, {
+      method: 'POST',
+      headers: mutationHeaders(idempotencyKey),
+      body: JSON.stringify({ reason }),
+    });
   },
   dispatchReport(id: string, dispatchLog?: Record<string, unknown>, version?: number, idempotencyKey = `dispatch-${id}-${crypto.randomUUID()}`) {
     return request<{ report: BackendReportRecord }>(`/api/reports/${encodeURIComponent(id)}/dispatch`, {
@@ -234,7 +287,19 @@ export const api = {
   async login(email: string, password: string): Promise<CurrentUser> {
     return (await apiClient.login(email, password)).user;
   },
+  async signup(labName: string, name: string, email: string, password: string): Promise<CurrentUser> {
+    return (await apiClient.signup(labName, name, email, password)).user;
+  },
   logout: apiClient.logout,
+  async staffUsers(): Promise<StaffUser[]> {
+    return (await apiClient.staffUsers()).users;
+  },
+  async createStaff(input: { name: string; email: string; password: string; role: StaffUser['role'] }): Promise<StaffUser> {
+    return (await apiClient.createStaff(input)).user;
+  },
+  async updateStaff(id: string, input: { name?: string; password?: string; role?: StaffUser['role']; active?: boolean }): Promise<StaffUser> {
+    return (await apiClient.updateStaff(id, input)).user;
+  },
   async labProfile(): Promise<LabProfile> {
     return (await apiClient.labProfile()).profile as LabProfile;
   },
@@ -249,7 +314,16 @@ export const api = {
     return apiClient.saveTemplates(templates);
   },
   async reports(): Promise<DiagnosticReport[]> {
-    return (await apiClient.reports()).reports.map(toDiagnosticReport);
+    const pageSize = 100;
+    const records: BackendReportRecord[] = [];
+    let offset = 0;
+    while (true) {
+      const page = (await apiClient.reports(pageSize, offset)).reports;
+      records.push(...page);
+      if (page.length < pageSize) break;
+      offset += pageSize;
+    }
+    return records.map(toDiagnosticReport);
   },
   async createReport(report: DiagnosticReport, idempotencyKey?: string): Promise<DiagnosticReport> {
     return toDiagnosticReport((await apiClient.createReport(report, idempotencyKey)).report);
@@ -262,6 +336,12 @@ export const api = {
   },
   async verifyReport(id: string, version?: number): Promise<DiagnosticReport> {
     return toDiagnosticReport((await apiClient.verifyReport(id, version)).report);
+  },
+  async acknowledgeCriticalResults(id: string, version: number | undefined, notes: string): Promise<DiagnosticReport> {
+    return toDiagnosticReport((await apiClient.acknowledgeCriticalResults(id, version, notes)).report);
+  },
+  async amendReport(id: string, reason: string): Promise<DiagnosticReport> {
+    return toDiagnosticReport((await apiClient.amendReport(id, reason)).report);
   },
   async dispatchReport(id: string, dispatchLog?: Record<string, unknown>, version?: number): Promise<DiagnosticReport> {
     return toDiagnosticReport((await apiClient.dispatchReport(id, dispatchLog, version)).report);

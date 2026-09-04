@@ -9,7 +9,8 @@ import {
   Award,
   ShieldCheck,
   FileText
-  ,LogOut
+  ,LogOut,
+  UserRoundCog
 } from 'lucide-react';
 import { LabProfile } from '@/domain/types';
 
@@ -20,7 +21,10 @@ interface LabHeaderProps {
   onNewReport: () => void;
   onOpenSettings: () => void;
   onOpenCatalog: () => void;
+  onOpenStaff: () => void;
   patientCount: number;
+  canCreateReport: boolean;
+  canManageLab: boolean;
   userName?: string;
   onLogout?: () => void;
 }
@@ -32,12 +36,15 @@ export const LabHeader: React.FC<LabHeaderProps> = ({
   onNewReport,
   onOpenSettings,
   onOpenCatalog,
+  onOpenStaff,
   patientCount,
+  canCreateReport,
+  canManageLab,
   userName,
   onLogout,
 }) => {
   return (
-    <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
+    <header className="app-shell-header bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
       {/* Top Banner - Accreditation & WhatsApp status */}
       <div className="bg-slate-900 text-slate-300 text-[11px] sm:text-xs px-3 sm:px-6 py-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
         <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
@@ -85,10 +92,11 @@ export const LabHeader: React.FC<LabHeaderProps> = ({
             </div>
           </div>
 
-          {/* Quick Action Icons for Mobile (Settings & Catalog) */}
+          {/* Quick Action Icons for Mobile (Staff, Settings & Catalog) */}
           <div className="flex items-center gap-1 md:hidden">
             <button
               id="btn-open-catalog-mobile"
+              hidden={!canManageLab}
               type="button"
               onClick={onOpenCatalog}
               title="Test Catalog & Rates"
@@ -97,7 +105,18 @@ export const LabHeader: React.FC<LabHeaderProps> = ({
               <BookOpen className="w-4 h-4" />
             </button>
             <button
+              id="btn-open-staff-mobile"
+              hidden={!canManageLab}
+              type="button"
+              onClick={onOpenStaff}
+              title="Manage staff accounts"
+              className="p-1.5 text-slate-600 hover:text-teal-700 hover:bg-slate-100 rounded-lg border border-slate-200"
+            >
+              <UserRoundCog className="w-4 h-4" />
+            </button>
+            <button
               id="btn-open-settings-mobile"
+              hidden={!canManageLab}
               type="button"
               onClick={onOpenSettings}
               title="Lab Profile & Settings"
@@ -147,6 +166,7 @@ export const LabHeader: React.FC<LabHeaderProps> = ({
           {/* New Report CTA */}
           <button
             id="btn-new-report-header"
+            hidden={!canCreateReport}
             type="button"
             onClick={onNewReport}
             className="flex items-center gap-1.5 bg-teal-700 hover:bg-teal-800 text-white text-xs font-semibold px-3 sm:px-3.5 py-2 rounded-lg transition-colors shadow-xs shrink-0"
@@ -156,10 +176,21 @@ export const LabHeader: React.FC<LabHeaderProps> = ({
             <span className="sm:hidden">New</span>
           </button>
 
-          {/* Test Catalog & Settings Desktop Buttons */}
+          {/* Staff, Test Catalog & Settings Desktop Buttons */}
           <div className="hidden md:flex items-center gap-2">
             <button
+              id="btn-open-staff-desktop"
+              hidden={!canManageLab}
+              type="button"
+              onClick={onOpenStaff}
+              title="Manage staff accounts"
+              className="p-2 text-slate-600 hover:text-teal-700 hover:bg-slate-100 rounded-lg border border-slate-200 transition-colors"
+            >
+              <UserRoundCog className="w-4 h-4" />
+            </button>
+            <button
               id="btn-open-templates-desktop"
+              hidden={!canManageLab}
               type="button"
               onClick={onOpenCatalog}
               title="Manage Test Templates & Pricing"
@@ -170,6 +201,7 @@ export const LabHeader: React.FC<LabHeaderProps> = ({
 
             <button
               id="btn-open-settings-desktop"
+              hidden={!canManageLab}
               type="button"
               onClick={onOpenSettings}
               title="Lab Profile, Letterhead & Signatures"

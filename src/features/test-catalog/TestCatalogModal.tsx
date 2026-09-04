@@ -20,7 +20,7 @@ interface TestCatalogModalProps {
   isOpen: boolean;
   onClose: () => void;
   templates: TestTemplate[];
-  onUpdateTemplates: (updated: TestTemplate[]) => void;
+  onUpdateTemplates: (updated: TestTemplate[]) => Promise<boolean>;
 }
 
 export const TestCatalogModal: React.FC<TestCatalogModalProps> = ({
@@ -34,6 +34,7 @@ export const TestCatalogModal: React.FC<TestCatalogModalProps> = ({
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const [editForm, setEditForm] = useState<TestTemplate | null>(templates[0] || null);
   const [mobileDetailView, setMobileDetailView] = useState<boolean>(false);
+  const [saving, setSaving] = useState(false);
 
   if (!isOpen) return null;
 
@@ -51,14 +52,20 @@ export const TestCatalogModal: React.FC<TestCatalogModalProps> = ({
     setMobileDetailView(true);
   };
 
-  const handleSaveEdit = (e: React.FormEvent) => {
+  const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editForm) return;
 
     const updated = templates.map((t) => (t.id === editForm.id ? editForm : t));
-    onUpdateTemplates(updated);
-    setSelectedTemplate(editForm);
-    setIsEditing(false);
+    setSaving(true);
+    try {
+      if (await onUpdateTemplates(updated)) {
+        setSelectedTemplate(editForm);
+        setIsEditing(false);
+      }
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleCreateNew = () => {
@@ -88,11 +95,14 @@ export const TestCatalogModal: React.FC<TestCatalogModalProps> = ({
     };
 
     const updated = [...templates, newTmpl];
-    onUpdateTemplates(updated);
-    setSelectedTemplate(newTmpl);
-    setEditForm(newTmpl);
-    setIsEditing(true);
-    setMobileDetailView(true);
+    setSaving(true);
+    void onUpdateTemplates(updated).then((saved) => {
+      if (!saved) return;
+      setSelectedTemplate(newTmpl);
+      setEditForm(newTmpl);
+      setIsEditing(true);
+      setMobileDetailView(true);
+    }).finally(() => setSaving(false));
   };
 
   return (
@@ -322,6 +332,7 @@ export const TestCatalogModal: React.FC<TestCatalogModalProps> = ({
                       </button>
                       <button
                         type="submit"
+                        disabled={saving}
                         className="bg-teal-700 text-white px-4 py-1.5 rounded text-xs font-bold hover:bg-teal-800"
                       >
                         Save Changes

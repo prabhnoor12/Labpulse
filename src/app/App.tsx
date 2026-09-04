@@ -2,7 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { DiagnosticReport, LabProfile, TestTemplate } from '@/domain/types';
 import { defaultLabProfile } from '@/config/defaultLabProfile';
 import { standardTestTemplates } from '@/data/defaultTemplates';
-import { ApiError, api, apiClient, CurrentUser } from '@/services/apiClient';
+import { ApiError, api, apiClient, CurrentUser, StaffUser } from '@/services/apiClient';
+import { can } from '@/auth/permissions';
 import { LabHeader } from '@/components/layout/LabHeader';
 import { LoginScreen } from '@/features/auth/LoginScreen';
 import { BillingReceiptModal } from '@/features/billing/BillingReceiptModal';
@@ -17,6 +18,7 @@ import { createBlankReport } from '@/features/reports/reportFactory';
 import { replaceReport } from '@/features/reports/reportService';
 import { validateReportForVerification } from '@/features/reports/reportValidation';
 import { TestCatalogModal } from '@/features/test-catalog/TestCatalogModal';
+import { StaffManagementModal } from '@/features/staff/StaffManagementModal';
 import { WhatsAppShareModal } from '@/features/whatsapp/WhatsAppShareModal';
 import { PrescriptionParseResult } from '@/services/aiService';
 import {
@@ -52,18 +54,32 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>('editor');
   const [currentReportId, setCurrentReportId] = useState(reports[0]?.id || '');
   const [shareTargetReport, setShareTargetReport] = useState<DiagnosticReport | null>(null);
+  const [billingTargetReport, setBillingTargetReport] = useState<DiagnosticReport | null>(null);
+  const [rxTargetReport, setRxTargetReport] = useState<DiagnosticReport | null>(null);
+  const [editorSyncToken, setEditorSyncToken] = useState(0);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isWhatsAppModalOpen, setIsWhatsAppModalOpen] = useState(false);
   const [isBillingModalOpen, setIsBillingModalOpen] = useState(false);
   const [isRxScannerModalOpen, setIsRxScannerModalOpen] = useState(false);
   const [isLabSettingsModalOpen, setIsLabSettingsModalOpen] = useState(false);
   const [isTestCatalogModalOpen, setIsTestCatalogModalOpen] = useState(false);
+  const [isStaffModalOpen, setIsStaffModalOpen] = useState(false);
+  const [staffUsers, setStaffUsers] = useState<StaffUser[]>([]);
   const [isViewerModalOpen, setIsViewerModalOpen] = useState(false);
   const [publicReportToken, setPublicReportToken] = useState<string | null>(readPublicReportToken);
   const [offlinePendingCount, setOfflinePendingCount] = useState(0);
+  const [offlineFailedCount, setOfflineFailedCount] = useState(0);
+  const [offlineRetryToken, setOfflineRetryToken] = useState(0);
   const [isOnline, setIsOnline] = useState(() => typeof navigator === 'undefined' || navigator.onLine);
   const [offlineUnlockAvailable, setOfflineUnlockAvailable] = useState(false);
   const [isOfflineSession, setIsOfflineSession] = useState(false);
+  const [offlineCachePassword, setOfflineCachePassword] = useState<string | null>(null);
+
+  const canCreateReport = can(currentUser, 'createReport');
+  const canEditReport = can(currentUser, 'editReport');
+  const canDispatchReport = can(currentUser, 'dispatchReport');
+  const canManageLab = can(currentUser, 'manageLab');
+  const canArchiveReport = can(currentUser, 'archiveReport');
 
   const loadWorkspace = async (user: CurrentUser, offlinePassword?: string) => {
     const [profile, apiTemplates, apiReports] = await Promise.all([
@@ -132,6 +148,21 @@ export default function App() {
   }, [publicReportToken]);
 
   useEffect(() => {
+    const handleSessionExpired = () => {
+      setCurrentUser(null);
+      setReports([]);
+      setShareTargetReport(null);
+      setIsOfflineSession(false);
+      setOfflineCachePassword(null);
+      setAuthError('Your session expired. Please sign in again.');
+      setAuthStatus('unauthenticated');
+      void hasOfflineSession().then(setOfflineUnlockAvailable).catch(() => setOfflineUnlockAvailable(false));
+    };
+    window.addEventListener('labpulse-session-expired', handleSessionExpired);
+    return () => window.removeEventListener('labpulse-session-expired', handleSessionExpired);
+  }, []);
+
+  useEffect(() => {
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
     window.addEventListener('online', handleOnline);
@@ -178,7 +209,8 @@ export default function App() {
           ].filter(Boolean);
           showToast(`${parts.join(' and ')}.`);
         }
-        setOfflinePendingCount(result.pendingCount + result.failedCount);
+        setOfflinePendingCount(result.pendingCount);
+        setOfflineFailedCount(result.failedCount);
       } catch {
         // IndexedDB availability must not prevent the online workspace from opening.
       }
@@ -190,7 +222,21 @@ export default function App() {
       active = false;
       window.removeEventListener('online', handleOnline);
     };
-  }, [currentUser]);
+  }, [currentUser, offlineRetryToken]);
+
+  useEffect(() => {
+    if (!currentUser || !offlineCachePassword) return;
+    void saveWorkspaceSnapshot({
+      userId: currentUser.id,
+      labId: currentUser.labId,
+      savedAt: new Date().toISOString(),
+      profile: labProfile,
+      templates: testTemplates,
+      reports,
+    }, offlineCachePassword).catch(() => {
+      // Secure offline caching is optional and must not block the active workspace.
+    });
+  }, [currentUser, labProfile, offlineCachePassword, reports, testTemplates]);
 
   useEffect(() => {
     const updatePublicToken = () => {
@@ -208,6 +254,7 @@ export default function App() {
       });
       await loadWorkspace(user, password);
       setCurrentUser(user);
+      setOfflineCachePassword(password);
       setOfflineUnlockAvailable(false);
       setIsOfflineSession(false);
       setAuthError(null);
@@ -216,6 +263,84 @@ export default function App() {
       const message = error instanceof Error ? error.message : 'Unable to sign in.';
       setAuthError(message);
       throw error;
+    }
+  };
+
+  const handleSignUp = async (labName: string, name: string, email: string, password: string) => {
+    try {
+      const user = await api.signup(labName, name, email, password);
+      await saveOfflineSession(user, password).catch(() => {
+        // Secure offline storage is optional and must not block account creation.
+      });
+      await loadWorkspace(user, password);
+      setCurrentUser(user);
+      setOfflineCachePassword(password);
+      setOfflineUnlockAvailable(false);
+      setIsOfflineSession(false);
+      setAuthError(null);
+      setAuthStatus('authenticated');
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Unable to create the laboratory account.';
+      setAuthError(message);
+      throw error;
+    }
+  };
+
+  const openStaffManagement = async () => {
+    setIsStaffModalOpen(true);
+    try {
+      setStaffUsers(await api.staffUsers());
+    } catch (error: unknown) {
+      showToast(error instanceof Error ? error.message : 'Unable to load staff accounts.');
+    }
+  };
+
+  const handleCreateStaff = async (input: { name: string; email: string; password: string; role: StaffUser['role'] }) => {
+    try {
+      const created = await api.createStaff(input);
+      setStaffUsers((previous) => [...previous, created].sort((a, b) => a.name.localeCompare(b.name)));
+      showToast('Staff account created.');
+    } catch (error: unknown) {
+      showToast(error instanceof Error ? error.message : 'Unable to create the staff account.');
+      throw error;
+    }
+  };
+
+  const handleUpdateStaff = async (id: string, input: { name?: string; password?: string; role?: StaffUser['role']; active?: boolean }) => {
+    try {
+      const updated = await api.updateStaff(id, input);
+      setStaffUsers((previous) => previous.map((user) => user.id === id ? updated : user));
+      showToast('Staff account updated.');
+    } catch (error: unknown) {
+      showToast(error instanceof Error ? error.message : 'Unable to update the staff account.');
+      throw error;
+    }
+  };
+
+  const handleAcknowledgeCritical = async (report: DiagnosticReport, notes: string) => {
+    try {
+      const saved = await api.acknowledgeCriticalResults(report.id, report.version, notes);
+      setReports((previous) => replaceReport(previous, saved));
+      if (shareTargetReport?.id === saved.id) setShareTargetReport(saved);
+      showToast('Critical result acknowledgement recorded.');
+      return saved;
+    } catch (error: unknown) {
+      showToast(error instanceof Error ? error.message : 'Unable to acknowledge critical results.');
+      return undefined;
+    }
+  };
+
+  const handleCreateAmendment = async (report: DiagnosticReport) => {
+    const reason = window.prompt('Why does this released report need an amendment?');
+    if (!reason?.trim()) return;
+    try {
+      const amended = await api.amendReport(report.id, reason.trim());
+      setReports((previous) => [amended, ...previous.map((item) => item.id === report.id ? { ...item, status: 'SUPERSEDED' as const } : item)]);
+      setCurrentReportId(amended.id);
+      setActiveTab('editor');
+      showToast(`Created amended report #${amended.reportNumber}.`);
+    } catch (error: unknown) {
+      showToast(error instanceof Error ? error.message : 'Unable to create amended report.');
     }
   };
 
@@ -230,6 +355,7 @@ export default function App() {
     setReports(snapshot.reports);
     setCurrentReportId(snapshot.reports[0]?.id || '');
     setCurrentUser(unlocked.user);
+    setOfflineCachePassword(password);
     setOfflineUnlockAvailable(false);
     setIsOfflineSession(true);
     setAuthError(null);
@@ -246,6 +372,7 @@ export default function App() {
         userId ? clearOfflineSession(userId) : Promise.resolve(),
       ]).catch(() => undefined);
       setCurrentUser(null);
+      setOfflineCachePassword(null);
       setReports([]);
       setIsOfflineSession(false);
       setAuthStatus('unauthenticated');
@@ -283,8 +410,15 @@ export default function App() {
   };
 
   const currentReport = reports.find((report) => report.id === currentReportId) || reports[0];
+  const canVerifyCurrentReport = Boolean(
+    shareTargetReport && (
+      (currentUser?.role === 'OWNER' && ['DRAFT', 'READY_FOR_REVIEW'].includes(shareTargetReport.status))
+      || (currentUser?.role === 'PATHOLOGIST' && shareTargetReport.status === 'READY_FOR_REVIEW')
+    ),
+  );
 
   const createNewReport = async () => {
+    if (!canCreateReport) return;
     const report = createBlankReport(testTemplates, labProfile);
     try {
       const savedReport = await api.createReport(report);
@@ -360,6 +494,28 @@ export default function App() {
       showToast(error instanceof Error ? error.message : 'Unable to save report');
       return undefined;
     }
+  };
+
+  const handleSubmitForReview = async (report: DiagnosticReport): Promise<DiagnosticReport | undefined> => {
+    try {
+      const submittedReport = await api.submitReport(report.id, report.version);
+      setReports((previous) => replaceReport(previous, submittedReport));
+      if (shareTargetReport?.id === submittedReport.id) setShareTargetReport(submittedReport);
+      showToast(`Report #${submittedReport.reportNumber} submitted for pathologist review.`);
+      return submittedReport;
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Unable to submit report for review');
+      return undefined;
+    }
+  };
+
+  const handleUpdateBilling = async (billing: DiagnosticReport['billing']): Promise<boolean> => {
+    if (!billingTargetReport) return false;
+    const saved = await handleSaveReport({ ...billingTargetReport, billing });
+    if (!saved) return false;
+    setBillingTargetReport(saved);
+    setEditorSyncToken((token) => token + 1);
+    return true;
   };
 
   const handleDeleteReport = async (reportId: string) => {
@@ -451,12 +607,17 @@ export default function App() {
       .catch((error: unknown) => showToast(error instanceof Error ? error.message : 'Unable to verify report'));
   };
 
-  const handleApplyParsedRx = async (data: PrescriptionParseResult) => {
-    if (!currentReport) return;
+  const handleApplyParsedRx = async (data: PrescriptionParseResult): Promise<boolean> => {
+    const targetReport = rxTargetReport || currentReport;
+    if (!targetReport) return false;
 
-    const result = applyPrescriptionToReport(currentReport, testTemplates, data);
+    const result = applyPrescriptionToReport(targetReport, testTemplates, data);
     const saved = await handleSaveReport(result.report);
-    if (saved) showToast(`Prescription parsed! Loaded ${result.panelCount} test panels.`);
+    if (!saved) return false;
+    setRxTargetReport(saved);
+    setEditorSyncToken((token) => token + 1);
+    showToast(`Prescription parsed! Loaded ${result.panelCount} test panels.`);
+    return true;
   };
 
   if (publicReportToken) return <PublicReportPage token={publicReportToken} />;
@@ -466,7 +627,7 @@ export default function App() {
   }
 
   if (authStatus === 'unauthenticated') {
-    return <LoginScreen onLogin={handleLogin} onOfflineUnlock={handleOfflineUnlock} offlineAvailable={offlineUnlockAvailable} error={authError} />;
+    return <LoginScreen onLogin={handleLogin} onSignUp={handleSignUp} onOfflineUnlock={handleOfflineUnlock} offlineAvailable={offlineUnlockAvailable} error={authError} />;
   }
 
   return (
@@ -488,9 +649,22 @@ export default function App() {
           Cached workspace unlocked. Reconnect to the server and sign in to revalidate this session.
         </div>
       )}
-      {offlinePendingCount > 0 && isOnline && (
-        <div className="fixed top-3 left-1/2 -translate-x-1/2 z-40 rounded-full bg-blue-100 border border-blue-300 text-blue-900 px-4 py-2 text-xs font-semibold shadow-lg">
-          {offlinePendingCount} offline change{offlinePendingCount === 1 ? '' : 's'} waiting to synchronize.
+      {(offlinePendingCount > 0 || offlineFailedCount > 0) && isOnline && (
+        <div className="fixed top-3 left-1/2 -translate-x-1/2 z-40 rounded-lg bg-blue-100 border border-blue-300 text-blue-900 px-4 py-2 text-xs font-semibold shadow-lg flex items-center gap-3">
+          <span>
+            {offlinePendingCount > 0 && `${offlinePendingCount} offline change${offlinePendingCount === 1 ? '' : 's'} waiting to synchronize.`}
+            {offlinePendingCount > 0 && offlineFailedCount > 0 && ' '}
+            {offlineFailedCount > 0 && `${offlineFailedCount} change${offlineFailedCount === 1 ? '' : 's'} could not synchronize.`}
+          </span>
+          {offlineFailedCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setOfflineRetryToken((token) => token + 1)}
+              className="rounded bg-blue-700 px-2 py-1 text-[10px] font-bold text-white hover:bg-blue-800"
+            >
+              Retry
+            </button>
+          )}
         </div>
       )}
 
@@ -500,8 +674,11 @@ export default function App() {
         onTabChange={setActiveTab}
         onOpenSettings={() => setIsLabSettingsModalOpen(true)}
         onOpenCatalog={() => setIsTestCatalogModalOpen(true)}
+        onOpenStaff={() => void openStaffManagement()}
         onNewReport={createNewReport}
         patientCount={reports.length}
+        canCreateReport={canCreateReport}
+        canManageLab={canManageLab}
         userName={currentUser?.name}
         onLogout={() => void handleLogout()}
       />
@@ -513,10 +690,23 @@ export default function App() {
             lab={labProfile}
             templates={testTemplates}
             onSaveReport={handleSaveReport}
+            onSubmitForReview={handleSubmitForReview}
             onPreviewReport={handlePreviewReport}
             onWhatsAppShare={handleOpenWhatsAppShare}
-            onOpenBilling={() => setIsBillingModalOpen(true)}
-            onOpenRxScanner={() => setIsRxScannerModalOpen(true)}
+            onOpenBilling={(report) => {
+              setBillingTargetReport(report);
+              setIsBillingModalOpen(true);
+            }}
+            onOpenRxScanner={(report) => {
+              setRxTargetReport(report);
+              setIsRxScannerModalOpen(true);
+            }}
+            externalSyncToken={editorSyncToken}
+            onAcknowledgeCritical={handleAcknowledgeCritical}
+            canEdit={canEditReport}
+            canSubmitForReview={can(currentUser, 'submitReport')}
+            canDispatch={canDispatchReport}
+            canAcknowledgeCritical={can(currentUser, 'verifyReport')}
           />
         )}
 
@@ -524,7 +714,7 @@ export default function App() {
           <div className="bg-white rounded-xl border border-dashed border-slate-300 p-10 text-center max-w-2xl mx-auto">
             <h2 className="text-base font-bold text-slate-900">No reports yet</h2>
             <p className="mt-1 text-sm text-slate-500">Create a report to begin entering patient and test information.</p>
-            <button type="button" onClick={createNewReport} className="mt-5 bg-teal-700 hover:bg-teal-800 text-white text-xs font-bold px-4 py-2 rounded-lg">
+            <button type="button" onClick={createNewReport} hidden={!canCreateReport} className="mt-5 bg-teal-700 hover:bg-teal-800 text-white text-xs font-bold px-4 py-2 rounded-lg">
               Create New Report
             </button>
           </div>
@@ -544,7 +734,14 @@ export default function App() {
             }}
             onWhatsAppShare={handleOpenWhatsAppShare}
             onDeleteReport={handleDeleteReport}
+            onAmendReport={handleCreateAmendment}
             onNewReport={createNewReport}
+            canCreateReport={canCreateReport}
+            canEditReport={canEditReport}
+            canDispatchReport={canDispatchReport}
+            canArchiveReport={canArchiveReport}
+            canAmendReport={can(currentUser, 'verifyReport')}
+            userRole={currentUser?.role || 'VIEWER'}
           />
         )}
       </main>
@@ -559,13 +756,13 @@ export default function App() {
         />
       )}
 
-      {currentReport && (
+      {billingTargetReport && (
         <BillingReceiptModal
           isOpen={isBillingModalOpen}
           onClose={() => setIsBillingModalOpen(false)}
-          report={currentReport}
+          report={billingTargetReport}
           lab={labProfile}
-          onUpdateBilling={(billing) => handleSaveReport({ ...currentReport, billing })}
+          onUpdateBilling={handleUpdateBilling}
         />
       )}
 
@@ -579,13 +776,16 @@ export default function App() {
         isOpen={isLabSettingsModalOpen}
         onClose={() => setIsLabSettingsModalOpen(false)}
         lab={labProfile}
-        onSaveLab={(updated) => {
-          void api.saveLabProfile(updated)
-            .then((saved) => {
-              setLabProfile(saved);
-              showToast('Lab profile and letterhead updated');
-            })
-            .catch((error: unknown) => showToast(error instanceof Error ? error.message : 'Unable to save lab profile'));
+        onSaveLab={async (updated) => {
+          try {
+            const saved = await api.saveLabProfile(updated);
+            setLabProfile(saved);
+            showToast('Lab profile and letterhead updated');
+            return true;
+          } catch (error: unknown) {
+            showToast(error instanceof Error ? error.message : 'Unable to save lab profile');
+            return false;
+          }
         }}
       />
 
@@ -593,14 +793,25 @@ export default function App() {
         isOpen={isTestCatalogModalOpen}
         onClose={() => setIsTestCatalogModalOpen(false)}
         templates={testTemplates}
-        onUpdateTemplates={(updated) => {
-          void api.saveTemplates(updated)
-            .then((saved) => {
-              setTestTemplates(saved);
-              showToast('Diagnostic test catalog updated');
-            })
-            .catch((error: unknown) => showToast(error instanceof Error ? error.message : 'Unable to save test catalog'));
+        onUpdateTemplates={async (updated) => {
+          try {
+            const saved = await api.saveTemplates(updated);
+            setTestTemplates(saved);
+            showToast('Diagnostic test catalog updated');
+            return true;
+          } catch (error: unknown) {
+            showToast(error instanceof Error ? error.message : 'Unable to save test catalog');
+            return false;
+          }
         }}
+      />
+
+      <StaffManagementModal
+        isOpen={isStaffModalOpen}
+        onClose={() => setIsStaffModalOpen(false)}
+        users={staffUsers}
+        onCreate={handleCreateStaff}
+        onUpdate={handleUpdateStaff}
       />
 
       {shareTargetReport && (
@@ -614,6 +825,8 @@ export default function App() {
             setIsWhatsAppModalOpen(true);
           }}
           onVerifyAndSign={handleVerifyAndSign}
+          canVerify={can(currentUser, 'verifyReport') && canVerifyCurrentReport}
+          canDispatch={canDispatchReport}
         />
       )}
     </div>

@@ -1,5 +1,7 @@
 export type AgeUnit = 'Yrs' | 'Months' | 'Days';
 export type Gender = 'Male' | 'Female' | 'Other';
+export type SpecimenStatus = 'ORDERED' | 'COLLECTED' | 'RECEIVED' | 'PROCESSING' | 'REJECTED' | 'RESULTS_PENDING' | 'COMPLETE';
+export type CriticalResultStatus = 'NOT_APPLICABLE' | 'PENDING' | 'ACKNOWLEDGED';
 export type ParameterFlag =
   | 'NORMAL'
   | 'PENDING'
@@ -56,6 +58,7 @@ export interface LabProfile {
 export interface Patient {
   id: string;
   uhid: string; // Unique Healthcare ID e.g., UHID-2026-0941
+  accessionNumber: string;
   name: string;
   age: number;
   ageUnit: AgeUnit;
@@ -68,6 +71,10 @@ export interface Patient {
   sampleReceivedAt: string;
   reportGeneratedAt: string;
   sampleType: string; // 'EDTA Whole Blood', 'Serum', 'Fluoride Plasma', 'Spot Urine', etc.
+  specimenStatus: SpecimenStatus;
+  sampleRejectionReason?: string;
+  sampleCollectedBy?: string;
+  sampleReceivedBy?: string;
   fastingStatus: 'Fasting (12h)' | 'Post-Prandial (2h)' | 'Random' | 'N/A';
   sampleBarcode: string;
 }
@@ -138,12 +145,19 @@ export interface DiagnosticReport {
   tests: TestPanel[];
   clinicalImpression: string;
   pathologistNotes: string;
+  criticalResultStatus: CriticalResultStatus;
+  criticalResultNotes?: string;
+  criticalResultAcknowledgedBy?: string;
+  criticalResultAcknowledgedAt?: string;
   patientSummaryEn: string;
   patientSummaryHi: string;
   keyHighlights?: string[];
   dietaryAdvice?: string;
   selectedSignatoryId: string;
-  status: 'DRAFT' | 'READY_FOR_REVIEW' | 'VERIFIED' | 'DISPATCHED' | 'ARCHIVED';
+  status: 'DRAFT' | 'READY_FOR_REVIEW' | 'VERIFIED' | 'DISPATCHED' | 'ARCHIVED' | 'SUPERSEDED';
+  supersedesReportId?: string;
+  amendmentReason?: string;
+  amendmentNumber?: number;
   verifiedAt?: string;
   verifiedBy?: string;
   publicReportUrl?: string;

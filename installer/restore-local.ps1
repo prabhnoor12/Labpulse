@@ -21,7 +21,19 @@ function Show-Result([string]$Message, [string]$Title, [string]$Icon) {
   [System.Windows.Forms.MessageBox]::Show($Message, $Title, 'OK', $Icon) | Out-Null
 }
 
+function Ensure-Administrator {
+  $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+  $principal = New-Object Security.Principal.WindowsPrincipal($identity)
+  if ($principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { return }
+
+  $arguments = "-NoLogo -NoProfile -STA -ExecutionPolicy Bypass -File `"$PSCommandPath`" -InstallDir `"$InstallDir`" -DataDir `"$DataDir`""
+  if ($BackupFile) { $arguments += " -BackupFile `"$BackupFile`"" }
+  Start-Process -FilePath $powershell -Verb RunAs -ArgumentList $arguments | Out-Null
+  exit 0
+}
+
 try {
+  Ensure-Administrator
   if (-not $BackupFile) {
     $dialog = New-Object System.Windows.Forms.OpenFileDialog
     $dialog.Title = 'Select a LabPulse backup'
@@ -36,7 +48,7 @@ try {
     "Restore this backup?`n`n$resolvedBackup`n`nCurrent reports and settings will be replaced by the selected backup.",
     'Confirm LabPulse restore',
     [System.Windows.Forms.MessageBoxButtons]::YesNo,
-    [System.Windows.Forms.MessageBoxIcon]::Warning,
+    [System.Windows.Forms.MessageBoxIcon]::Warning
   )
   if ($confirmation -ne [System.Windows.Forms.DialogResult]::Yes) { exit 0 }
 

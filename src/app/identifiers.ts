@@ -11,14 +11,25 @@ export function createId(prefix: string): string {
   return `${prefix}-${randomUuid()}`;
 }
 
+function localDatePart(date: Date): string {
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}`;
+}
+
 export function createReportNumber(date = new Date()): string {
-  const datePart = date.toISOString().slice(0, 10).replace(/-/g, '');
+  const datePart = localDatePart(date);
   const uniquePart = randomUuid().replace(/-/g, '').slice(0, 8).toUpperCase();
   return `LAB-${datePart}-${uniquePart}`;
 }
 
+export function createAccessionNumber(date = new Date()): string {
+  const datePart = localDatePart(date);
+  const uniquePart = randomUuid().replace(/-/g, '').slice(0, 8).toUpperCase();
+  return `ACC-${datePart}-${uniquePart}`;
+}
+
 export function createUhid(date = new Date()): string {
-  const datePart = date.toISOString().slice(2, 10).replace(/-/g, '');
+  const datePart = localDatePart(date).slice(2);
   const uniquePart = randomUuid().replace(/-/g, '').slice(0, 6).toUpperCase();
   return `UHID-${datePart}-${uniquePart}`;
 }

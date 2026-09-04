@@ -241,7 +241,7 @@ export async function listPendingOfflineReportOperations(userId: string, labId: 
     request.onerror = () => reject(request.error || new Error('Unable to read offline report operations.'));
     request.onsuccess = () => {
       const operations = (request.result as OfflineReportOperation[])
-        .filter((operation) => operation.userId === userId && operation.labId === labId && operation.status === 'PENDING')
+        .filter((operation) => operation.userId === userId && operation.labId === labId && (operation.status === 'PENDING' || operation.status === 'FAILED'))
         .sort((left, right) => {
           if (left.kind !== right.kind) return left.kind === 'CREATE_REPORT' ? -1 : 1;
           return left.createdAt.localeCompare(right.createdAt);

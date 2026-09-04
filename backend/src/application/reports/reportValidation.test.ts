@@ -8,7 +8,10 @@ const validInput = {
     phone: '9876543210',
     data: {
       age: 35,
+      accessionNumber: 'ACC-20260903-TEST1234',
+      specimenStatus: 'COMPLETE',
       sampleCollectedAt: '2026-09-03T08:00:00.000Z',
+      sampleReceivedAt: '2026-09-03T08:30:00.000Z',
       reportGeneratedAt: '2026-09-03T10:00:00.000Z',
     },
   },
@@ -41,4 +44,30 @@ test('rejects incomplete reports on the backend', () => {
   assert.ok(result.errors.some((error) => error.includes('phone')));
   assert.ok(result.errors.some((error) => error.includes('test panel')));
   assert.ok(result.errors.some((error) => error.includes('signatory')));
+});
+
+test('requires critical result acknowledgement before verification', () => {
+  const result = validateReportForVerification({
+    ...validInput,
+    data: {
+      ...validInput.data,
+      tests: [{ testName: 'CBC', price: 500, parameters: [{ name: 'Haemoglobin', value: '4', flag: 'CRITICAL_LOW' }] }],
+    },
+  });
+
+  assert.equal(result.valid, false);
+  assert.ok(result.errors.some((error) => error.includes('Critical result')));
+});
+
+test('allows verification validation after critical result acknowledgement', () => {
+  const result = validateReportForVerification({
+    ...validInput,
+    data: {
+      ...validInput.data,
+      criticalResultStatus: 'ACKNOWLEDGED',
+      tests: [{ testName: 'CBC', price: 500, parameters: [{ name: 'Haemoglobin', value: '4', flag: 'CRITICAL_LOW' }] }],
+    },
+  });
+
+  assert.deepEqual(result, { valid: true, errors: [] });
 });

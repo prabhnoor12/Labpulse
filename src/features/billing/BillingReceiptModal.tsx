@@ -19,7 +19,7 @@ interface BillingReceiptModalProps {
   onClose: () => void;
   report: DiagnosticReport;
   lab: LabProfile;
-  onUpdateBilling: (billing: BillingInfo) => void;
+  onUpdateBilling: (billing: BillingInfo) => Promise<boolean>;
 }
 
 export const BillingReceiptModal: React.FC<BillingReceiptModalProps> = ({
@@ -77,7 +77,7 @@ export const BillingReceiptModal: React.FC<BillingReceiptModalProps> = ({
     });
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     const totalAmount = report.tests.reduce((sum, test) => sum + Math.max(0, Number(test.price) || 0), 0);
     const discount = Math.min(Math.max(0, Number(billing.discount) || 0), totalAmount);
@@ -89,7 +89,7 @@ export const BillingReceiptModal: React.FC<BillingReceiptModalProps> = ({
       ? 'PARTIAL'
       : 'UNPAID';
 
-    onUpdateBilling({
+    const saved = await onUpdateBilling({
       ...billing,
       totalAmount,
       discount,
@@ -97,7 +97,7 @@ export const BillingReceiptModal: React.FC<BillingReceiptModalProps> = ({
       paidAmount,
       paymentStatus,
     });
-    onClose();
+    if (saved) onClose();
   };
 
   const upiVpa = lab.upiId || '';

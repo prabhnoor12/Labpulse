@@ -16,7 +16,7 @@ interface LabSettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
   lab: LabProfile;
-  onSaveLab: (updated: LabProfile) => void;
+  onSaveLab: (updated: LabProfile) => Promise<boolean>;
 }
 
 export const LabSettingsModal: React.FC<LabSettingsModalProps> = ({
@@ -27,13 +27,18 @@ export const LabSettingsModal: React.FC<LabSettingsModalProps> = ({
 }) => {
   const [formData, setFormData] = useState<LabProfile>({ ...lab });
   const [activeTab, setActiveTab] = useState<'profile' | 'signatories' | 'letterhead'>('profile');
+  const [saving, setSaving] = useState(false);
 
   if (!isOpen) return null;
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    onSaveLab(formData);
-    onClose();
+    setSaving(true);
+    try {
+      if (await onSaveLab(formData)) onClose();
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleAddSignatory = () => {
@@ -474,6 +479,7 @@ export const LabSettingsModal: React.FC<LabSettingsModalProps> = ({
             <button
               id="save-lab-settings-btn"
               type="submit"
+              disabled={saving}
               className="flex items-center gap-1.5 bg-teal-700 hover:bg-teal-800 text-white px-5 py-2 rounded-lg text-xs font-bold transition-colors shadow-xs"
             >
               <Save className="w-4 h-4" />

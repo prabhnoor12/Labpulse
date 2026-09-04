@@ -6,7 +6,7 @@ import {
   TestTemplate,
 } from '@/domain/types';
 import { computeDerivedValues } from '@/domain/rangeEvaluator';
-import { createId, createReportNumber, createUhid } from '@/app/identifiers';
+import { createAccessionNumber, createId, createReportNumber, createUhid } from '@/app/identifiers';
 
 export function createPanelFromTemplate(template: TestTemplate, gender: 'Male' | 'Female' | 'Other'): TestPanel {
   const parameters: TestParameter[] = computeDerivedValues(
@@ -60,6 +60,7 @@ export function createBlankReport(
     patient: {
       id: createId('pat'),
       uhid: createUhid(new Date(now)),
+      accessionNumber: createAccessionNumber(new Date(now)),
       name: '',
       age: 0,
       ageUnit: 'Yrs',
@@ -68,15 +69,20 @@ export function createBlankReport(
       email: '',
       referringDoctor: '',
       sampleCollectedAt: now,
-      sampleReceivedAt: now,
+      sampleReceivedAt: '',
       reportGeneratedAt: now,
       sampleBarcode: createId('SMPL').replace(/-/g, '').slice(0, 16).toUpperCase(),
       sampleType: template.sampleType,
+      specimenStatus: 'COLLECTED',
+      sampleCollectedBy: '',
+      sampleReceivedBy: '',
       fastingStatus: 'N/A',
     },
     tests: [panel],
     clinicalImpression: '',
     pathologistNotes: '',
+    criticalResultStatus: 'NOT_APPLICABLE',
+    criticalResultNotes: '',
     patientSummaryEn: '',
     patientSummaryHi: '',
     status: 'DRAFT',

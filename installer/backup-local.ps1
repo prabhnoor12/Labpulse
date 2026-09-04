@@ -14,6 +14,16 @@ $pgCtl = Join-Path $InstallDir 'postgresql\bin\pg_ctl.exe'
 $pgDump = Join-Path $InstallDir 'postgresql\bin\pg_dump.exe'
 $backupScript = Join-Path $InstallDir 'installer\backup.ps1'
 
+function Ensure-Administrator {
+  $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+  $principal = New-Object Security.Principal.WindowsPrincipal($identity)
+  if ($principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { return }
+
+  $arguments = "-NoLogo -NoProfile -STA -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$PSCommandPath`" -InstallDir `"$InstallDir`" -DataDir `"$DataDir`" -Interactive"
+  Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe') -Verb RunAs -ArgumentList $arguments | Out-Null
+  exit 0
+}
+
 function Show-Result([string]$Message, [string]$Title, [string]$Icon) {
   if ($Interactive) {
     Add-Type -AssemblyName System.Windows.Forms
@@ -23,6 +33,7 @@ function Show-Result([string]$Message, [string]$Title, [string]$Icon) {
 
 $startedByBackup = $false
 try {
+  Ensure-Administrator
   foreach ($requiredFile in @($configPath, $pgCtl, $pgDump, $backupScript)) {
     if (-not (Test-Path -LiteralPath $requiredFile)) { throw "Required backup file is missing: $requiredFile" }
   }

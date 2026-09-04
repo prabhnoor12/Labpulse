@@ -7,6 +7,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 const defaultPatient: Patient = {
   id: '',
   uhid: '',
+  accessionNumber: '',
   name: '',
   age: 0,
   ageUnit: 'Yrs',
@@ -17,6 +18,10 @@ const defaultPatient: Patient = {
   sampleReceivedAt: new Date(0).toISOString(),
   reportGeneratedAt: new Date(0).toISOString(),
   sampleType: '',
+  specimenStatus: 'ORDERED',
+  sampleRejectionReason: '',
+  sampleCollectedBy: '',
+  sampleReceivedBy: '',
   fastingStatus: 'N/A',
   sampleBarcode: '',
 };
@@ -46,7 +51,7 @@ export function normalizeStoredReports(value: unknown): DiagnosticReport[] {
             parameters: Array.isArray(test.parameters) ? test.parameters : [],
           }))
         : [];
-      const status: DiagnosticReport['status'] = item.status === 'READY_FOR_REVIEW' || item.status === 'VERIFIED' || item.status === 'DISPATCHED' || item.status === 'ARCHIVED'
+      const status: DiagnosticReport['status'] = item.status === 'READY_FOR_REVIEW' || item.status === 'VERIFIED' || item.status === 'DISPATCHED' || item.status === 'ARCHIVED' || item.status === 'SUPERSEDED'
         ? item.status
         : 'DRAFT';
 
@@ -62,6 +67,10 @@ export function normalizeStoredReports(value: unknown): DiagnosticReport[] {
         whatsAppLogs: Array.isArray(item.whatsAppLogs) ? item.whatsAppLogs as DiagnosticReport['whatsAppLogs'] : [],
         clinicalImpression: typeof item.clinicalImpression === 'string' ? item.clinicalImpression : '',
         pathologistNotes: typeof item.pathologistNotes === 'string' ? item.pathologistNotes : '',
+        criticalResultStatus: item.criticalResultStatus === 'ACKNOWLEDGED' || item.criticalResultStatus === 'PENDING'
+          ? item.criticalResultStatus
+          : 'NOT_APPLICABLE' as DiagnosticReport['criticalResultStatus'],
+        criticalResultNotes: typeof item.criticalResultNotes === 'string' ? item.criticalResultNotes : '',
         patientSummaryEn: typeof item.patientSummaryEn === 'string' ? item.patientSummaryEn : '',
         patientSummaryHi: typeof item.patientSummaryHi === 'string' ? item.patientSummaryHi : '',
         selectedSignatoryId: typeof item.selectedSignatoryId === 'string' ? item.selectedSignatoryId : '',

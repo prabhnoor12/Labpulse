@@ -42,11 +42,11 @@ Name: "{commonappdata}\LabPulse\backups"
 [Icons]
 Name: "{autodesktop}\LabPulse"; Filename: "{sys}\cmd.exe"; Parameters: "/c start """" ""http://localhost:3710"""""; WorkingDir: "{app}"; Comment: "Open LabPulse"
 Name: "{group}\LabPulse"; Filename: "{sys}\cmd.exe"; Parameters: "/c start """" ""http://localhost:3710"""""; WorkingDir: "{app}"; Comment: "Open LabPulse"
-Name: "{group}\LabPulse - Backup now"; Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoLogo -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File ""{app}\installer\backup-local.ps1"" -InstallDir ""{app}"" -DataDir ""{commonappdata}\LabPulse"" -Interactive"; WorkingDir: "{app}"; Flags: runasadmin; Comment: "Create a LabPulse backup now"
-Name: "{group}\LabPulse - Restore backup"; Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoLogo -NoProfile -ExecutionPolicy Bypass -File ""{app}\installer\restore-local.ps1"" -InstallDir ""{app}"" -DataDir ""{commonappdata}\LabPulse"""; WorkingDir: "{app}"; Flags: runasadmin; Comment: "Restore a LabPulse backup"
+Name: "{group}\LabPulse - Backup now"; Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoLogo -NoProfile -STA -WindowStyle Hidden -ExecutionPolicy Bypass -File ""{app}\installer\backup-local.ps1"" -InstallDir ""{app}"" -DataDir ""{commonappdata}\LabPulse"" -Interactive"; WorkingDir: "{app}"; Comment: "Create a LabPulse backup now"
+Name: "{group}\LabPulse - Restore backup"; Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoLogo -NoProfile -STA -WindowStyle Hidden -ExecutionPolicy Bypass -File ""{app}\installer\restore-local.ps1"" -InstallDir ""{app}"" -DataDir ""{commonappdata}\LabPulse"""; WorkingDir: "{app}"; Comment: "Restore a LabPulse backup"
 
 [Run]
-Filename: "powershell.exe"; Parameters: "-NoLogo -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File ""{app}\installer\install.ps1"" -InstallDir ""{app}"" -DataDir ""{commonappdata}\LabPulse"""; Flags: waituntilterminated runascurrentuser runhidden
+Filename: "powershell.exe"; Parameters: "-NoLogo -NoProfile -STA -WindowStyle Hidden -ExecutionPolicy Bypass -File ""{app}\installer\install.ps1"" -InstallDir ""{app}"" -DataDir ""{commonappdata}\LabPulse"""; Flags: waituntilterminated runascurrentuser runhidden
 
 [UninstallRun]
 Filename: "powershell.exe"; Parameters: "-NoLogo -NoProfile -ExecutionPolicy Bypass -File ""{app}\installer\uninstall.ps1"""; Flags: runhidden waituntilterminated; RunOnceId: "LabPulseUninstall"

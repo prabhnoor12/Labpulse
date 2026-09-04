@@ -15,7 +15,7 @@ import { parseDoctorPrescription, PrescriptionParseResult } from '@/services/aiS
 interface PrescriptionScannerModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onApplyParsedData: (data: PrescriptionParseResult) => void;
+  onApplyParsedData: (data: PrescriptionParseResult) => Promise<boolean>;
 }
 
 export const PrescriptionScannerModal: React.FC<PrescriptionScannerModalProps> = ({
@@ -45,9 +45,9 @@ export const PrescriptionScannerModal: React.FC<PrescriptionScannerModalProps> =
     }
   };
 
-  const handleApply = () => {
-    if (!result) return;
-    onApplyParsedData({
+  const handleApply = async () => {
+    if (!result) return false;
+    const applied = await onApplyParsedData({
       suggestedTestIds: result.suggestedTestIds || [],
       patientName: result.patientName,
       patientAge: result.patientAge,
@@ -56,7 +56,7 @@ export const PrescriptionScannerModal: React.FC<PrescriptionScannerModalProps> =
       fastingRequired: result.fastingRequired,
       specialInstructions: result.specialInstructions,
     });
-    onClose();
+    if (applied) onClose();
   };
 
   return (

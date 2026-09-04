@@ -21,6 +21,8 @@ interface ReportViewerModalProps {
   lab: LabProfile;
   onWhatsAppShare: () => void;
   onVerifyAndSign: () => void;
+  canVerify: boolean;
+  canDispatch: boolean;
 }
 
 export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({
@@ -30,8 +32,11 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({
   lab,
   onWhatsAppShare,
   onVerifyAndSign,
+  canVerify,
+  canDispatch,
 }) => {
   const [showWatermark, setShowWatermark] = useState<boolean>(lab.showWatermark);
+  const isFinalReport = report.status === 'VERIFIED' || report.status === 'DISPATCHED';
 
   if (!isOpen) return null;
 
@@ -74,6 +79,7 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({
             {report.status !== 'VERIFIED' && report.status !== 'DISPATCHED' && (
               <button
                 id="btn-verify-and-sign-doc"
+                hidden={!canVerify}
                 type="button"
                 onClick={onVerifyAndSign}
                 className="flex items-center gap-1 bg-teal-700 hover:bg-teal-800 text-white text-[11px] sm:text-xs font-bold px-2.5 sm:px-3 py-1.5 rounded-lg transition-colors"
@@ -89,7 +95,9 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({
               id="btn-print-from-viewer"
               type="button"
               onClick={handlePrint}
-              className="flex items-center gap-1 bg-slate-800 hover:bg-slate-700 text-teal-300 text-[11px] sm:text-xs font-bold px-2.5 sm:px-3 py-1.5 rounded-lg border border-slate-700 transition-colors"
+              disabled={!isFinalReport}
+              title={isFinalReport ? 'Print final report or save as PDF' : 'Printing is available after the report is verified'}
+              className="flex items-center gap-1 bg-slate-800 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50 text-teal-300 text-[11px] sm:text-xs font-bold px-2.5 sm:px-3 py-1.5 rounded-lg border border-slate-700 transition-colors"
             >
               <Printer className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Print / PDF</span>
@@ -99,6 +107,7 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({
             {/* WhatsApp Share */}
             <button
               id="btn-whatsapp-from-viewer"
+              hidden={!canDispatch}
               type="button"
               onClick={onWhatsAppShare}
               className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] sm:text-xs font-bold px-3 sm:px-4 py-1.5 rounded-lg transition-colors shadow-xs"

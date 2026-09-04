@@ -32,6 +32,14 @@ export const DiagnosticReportDocument: React.FC<DiagnosticReportDocumentProps> =
 
   const patient = report.patient;
   const signatory = lab.signatories.find((s) => s.id === report.selectedSignatoryId) || lab.signatories[0];
+  const isFinalReport = report.status === 'VERIFIED' || report.status === 'DISPATCHED';
+  const reportStatusLabel = report.status === 'READY_FOR_REVIEW'
+    ? 'AWAITING PATHOLOGIST REVIEW - NOT FINAL'
+    : report.status === 'SUPERSEDED'
+      ? 'SUPERSEDED - DO NOT USE'
+      : report.status === 'ARCHIVED'
+        ? 'ARCHIVED - DO NOT USE'
+        : 'DRAFT - NOT FOR CLINICAL USE';
 
   useEffect(() => {
     const verifyUrl = report.publicReportUrl;
@@ -57,6 +65,12 @@ export const DiagnosticReportDocument: React.FC<DiagnosticReportDocumentProps> =
           <div className="text-center transform -rotate-45 text-slate-900 font-extrabold text-5xl tracking-widest uppercase">
             {lab.watermarkText || lab.name}
           </div>
+        </div>
+      )}
+
+      {!isFinalReport && (
+        <div className="relative z-10 mb-3 rounded border-2 border-amber-500 bg-amber-50 px-3 py-2 text-center text-[11px] font-extrabold tracking-wide text-amber-900 print:border-amber-700 print:bg-amber-50">
+          {reportStatusLabel}
         </div>
       )}
 
@@ -324,7 +338,7 @@ export const DiagnosticReportDocument: React.FC<DiagnosticReportDocumentProps> =
           {/* Technologist */}
           <div className="text-center sm:text-left">
             <div className="h-10 flex items-center justify-center sm:justify-start">
-              <span className="font-serif italic text-slate-500 font-medium text-xs">Vikram Singh</span>
+              <span className="font-serif italic text-slate-500 font-medium text-xs">{lab.technologistName || 'Laboratory Technologist'}</span>
             </div>
             <div className="border-t border-slate-400 pt-1">
               <div className="font-bold text-slate-800 text-[11px]">{lab.technologistName}</div>
@@ -334,10 +348,14 @@ export const DiagnosticReportDocument: React.FC<DiagnosticReportDocumentProps> =
 
           {/* Stamp / Verified Badge */}
           <div className="text-center hidden sm:flex flex-col items-center justify-center">
-            <div className="w-16 h-16 rounded-full border-2 border-dashed border-teal-600 flex flex-col items-center justify-center p-1 transform rotate-[-8deg] bg-teal-50/30">
-              <ShieldCheck className="w-5 h-5 text-teal-700" />
-              <span className="text-[7px] font-extrabold text-teal-800 uppercase tracking-tighter text-center leading-tight">
-                {lab.name || 'LABORATORY'}<br/>VERIFIED
+            <div className={`w-16 h-16 rounded-full border-2 border-dashed flex flex-col items-center justify-center p-1 transform rotate-[-8deg] ${
+              isFinalReport ? 'border-teal-600 bg-teal-50/30' : 'border-amber-600 bg-amber-50/60'
+            }`}>
+              <ShieldCheck className={`w-5 h-5 ${isFinalReport ? 'text-teal-700' : 'text-amber-700'}`} />
+              <span className={`text-[7px] font-extrabold uppercase tracking-tighter text-center leading-tight ${
+                isFinalReport ? 'text-teal-800' : 'text-amber-800'
+              }`}>
+                {isFinalReport ? <>{lab.name || 'LABORATORY'}<br/>VERIFIED</> : reportStatusLabel}
               </span>
             </div>
           </div>
@@ -362,7 +380,7 @@ export const DiagnosticReportDocument: React.FC<DiagnosticReportDocumentProps> =
           <p>{lab.footerDisclaimer}</p>
           <div className="mt-1 text-slate-400 font-mono text-[8px] flex items-center justify-between">
             <span>Report Generated electronically on: {new Date(report.updatedAt || report.createdAt).toLocaleString('en-IN')}</span>
-            <span>Page 1 of 1 • LabPulse India System</span>
+            <span>LabPulse India System</span>
           </div>
         </div>
       </footer>

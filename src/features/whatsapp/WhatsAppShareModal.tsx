@@ -283,6 +283,9 @@ export const WhatsAppShareModal: React.FC<WhatsAppShareModalProps> = ({
                 rel="noopener noreferrer"
                 onClick={(event) => {
                   if (!isValidRecipient || !canDispatch) event.preventDefault();
+                  if (isValidRecipient && canDispatch && onReportDispatched) {
+                    onReportDispatched(templateType, fullPhone, 'DIRECT_WHATSAPP');
+                  }
                   if (onRecordDispatch) onRecordDispatch('DIRECT_WHATSAPP');
                 }}
                 className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-white border border-emerald-300 px-2 py-1 rounded hover:bg-emerald-100 transition-colors"
@@ -296,6 +299,9 @@ export const WhatsAppShareModal: React.FC<WhatsAppShareModalProps> = ({
                 rel="noopener noreferrer"
                 onClick={(event) => {
                   if (!isValidRecipient || !canDispatch) event.preventDefault();
+                  if (isValidRecipient && canDispatch && onReportDispatched) {
+                    onReportDispatched(templateType, fullPhone, 'WA_WEB');
+                  }
                   if (onRecordDispatch) onRecordDispatch('WA_WEB');
                 }}
                 className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-white border border-emerald-300 px-2 py-1 rounded hover:bg-emerald-100 transition-colors"
@@ -328,6 +334,26 @@ export const WhatsAppShareModal: React.FC<WhatsAppShareModalProps> = ({
                   Scan this QR code from any smartphone camera to open WhatsApp with pre-filled report message.
                 </p>
               </div>
+            </div>
+          )}
+
+          {report.dispatchAttempts && report.dispatchAttempts.length > 0 && (
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-600">Dispatch history</span>
+                <span className="text-[10px] text-slate-500">{report.dispatchAttempts.length} attempt{report.dispatchAttempts.length === 1 ? '' : 's'}</span>
+              </div>
+              <div className="space-y-1.5">
+                {report.dispatchAttempts.slice(0, 3).map((attempt) => (
+                  <div key={attempt.id} className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                    <span className="font-semibold text-slate-700">#{attempt.attemptNumber} · {attempt.channel.replaceAll('_', ' ')}</span>
+                    <span className={`rounded border px-1.5 py-0.5 font-bold ${attempt.status === 'SENT' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : attempt.status === 'FAILED' ? 'border-rose-200 bg-rose-50 text-rose-700' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
+                      {attempt.status === 'UNAVAILABLE' ? 'Opened; not confirmed' : attempt.status}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-2 text-[10px] text-slate-500">Browser-based WhatsApp cannot confirm patient receipt. Keep the attempt log for follow-up.</p>
             </div>
           )}
 
